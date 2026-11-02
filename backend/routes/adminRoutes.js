@@ -139,6 +139,12 @@ router.get('/departments', adminController.getDepartments);
 router.get('/subjects', adminController.getSubjects);
 
 /**
+ * @route   GET /api/admin/subjects/:id
+ * @desc    Get subject details including assigned teachers and sections
+ */
+router.get('/subjects/:id', adminController.getSubjectById);
+
+/**
  * @route   POST /api/admin/subjects
  * @desc    Create a new subject
  */

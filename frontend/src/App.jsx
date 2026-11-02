@@ -32,6 +32,7 @@ import TeacherProfile from './components/TeacherProfile';
 import CollegeSettings from './components/CollegeSettings';
 import GeneralSettings from './components/GeneralSettings';
 import SubjectList from './components/SubjectList';
+import SubjectDetails from './components/SubjectDetails';
 import ClassesSections from './components/ClassesSections';
 import StudentLayout from './components/StudentLayout';
 import StudentDashboardOverview from './components/StudentDashboardOverview';
@@ -404,6 +405,7 @@ export default function App() {
         <Route path="teachers/:id" element={<TeacherProfile />} />
         <Route path="classes" element={<ClassesSections />} />
         <Route path="subjects" element={<SubjectList />} />
+        <Route path="subjects/:id" element={<SubjectDetails />} />
         <Route path="assignments" element={<ClassesSections />} />
         <Route path="academic-records" element={<Placeholder title="Academic Records" />} />
         <Route path="risk-analytics" element={<Placeholder title="Risk Analytics Overview" />} />

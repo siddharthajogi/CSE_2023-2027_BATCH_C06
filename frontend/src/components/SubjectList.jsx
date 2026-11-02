@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { adminApi } from '../api';
 import { usePageRefresh } from '../context/RefreshContext';
 import { Loader2, Search, Plus, X, Trash2, CheckCircle2 } from 'lucide-react';
@@ -53,6 +54,9 @@ const getYearOrder = (s) => {
 };
 
 export default function SubjectList() {
+  const navigate = useNavigate();
+  const location = useLocation();
+
   const [subjects, setSubjects] = useState([]);
   const [departments, setDepartments] = useState([]);
   const [loadingDepts, setLoadingDepts] = useState(false);
@@ -61,11 +65,11 @@ export default function SubjectList() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  // Toolbar filter states: All Years, All Departments, Search, and Summary Cards Status Filter
-  const [filterYear, setFilterYear] = useState('');
-  const [filterDepartment, setFilterDepartment] = useState('');
-  const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState('ALL'); // 'ALL' | 'ACTIVE' | 'INACTIVE'
+  // Toolbar filter states: All Years, All Departments, Search, and Summary Cards Status Filter (preserving previous state if navigated back)
+  const [filterYear, setFilterYear] = useState(location.state?.filterYear || '');
+  const [filterDepartment, setFilterDepartment] = useState(location.state?.filterDepartment || '');
+  const [searchTerm, setSearchTerm] = useState(location.state?.searchTerm || '');
+  const [statusFilter, setStatusFilter] = useState(location.state?.statusFilter || 'ALL'); // 'ALL' | 'ACTIVE' | 'INACTIVE'
 
   const [departmentSelect, setDepartmentSelect] = useState('');
   const [subjectTypeSelect, setSubjectTypeSelect] = useState('Theory');
@@ -508,9 +512,13 @@ export default function SubjectList() {
             </thead>
             <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
               {sortedFiltered.map((s) => (
-                <tr key={s._id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
-                  <td className="px-4 py-3 font-mono font-medium text-slate-900 dark:text-slate-100">{s.code}</td>
-                  <td className="px-4 py-3 font-medium text-indigo-900 dark:text-indigo-300">{s.name}</td>
+                <tr
+                  key={s._id}
+                  onClick={() => navigate(`/admin/subjects/${s._id}`, { state: { filterYear, filterDepartment, searchTerm, statusFilter } })}
+                  className="hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-colors cursor-pointer group"
+                >
+                  <td className="px-4 py-3 font-mono font-medium text-slate-900 dark:text-slate-100 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">{s.code}</td>
+                  <td className="px-4 py-3 font-medium text-indigo-900 dark:text-indigo-300 group-hover:underline">{s.name}</td>
                   <td className="px-4 py-3 text-slate-600 dark:text-slate-400">{resolveDeptName(s)}</td>
                   <td className="px-4 py-3 text-slate-700 dark:text-slate-300 font-medium">
                     {getDisplayYear(resolveSubjectYear(s))}
@@ -520,15 +528,30 @@ export default function SubjectList() {
                       {s.isActive ? 'Active' : 'Inactive'}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-right flex justify-end items-center gap-3">
-                    <button onClick={() => handleOpenEdit(s)} className="text-sm text-indigo-600 dark:text-indigo-400 hover:text-indigo-900 dark:hover:text-indigo-300 font-medium cursor-pointer">
+                  <td className="px-4 py-3 text-right flex justify-end items-center gap-3" onClick={(e) => e.stopPropagation()}>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleOpenEdit(s);
+                      }}
+                      className="text-sm text-indigo-600 dark:text-indigo-400 hover:text-indigo-900 dark:hover:text-indigo-300 font-medium cursor-pointer"
+                    >
                       Edit
                     </button>
-                    <button onClick={() => toggleStatus(s)} className={`text-sm font-medium cursor-pointer ${s.isActive ? 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200' : 'text-green-600 dark:text-green-400 hover:text-green-900 dark:hover:text-green-300'}`}>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleStatus(s);
+                      }}
+                      className={`text-sm font-medium cursor-pointer ${s.isActive ? 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200' : 'text-green-600 dark:text-green-400 hover:text-green-900 dark:hover:text-green-300'}`}
+                    >
                       {s.isActive ? 'Deactivate' : 'Activate'}
                     </button>
                     <button
-                      onClick={() => handleDeleteClick(s)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDeleteClick(s);
+                      }}
                       disabled={processingDeleteId === s._id}
                       className="text-sm text-rose-600 dark:text-rose-400 hover:text-rose-900 dark:hover:text-rose-300 font-medium flex items-center gap-1 cursor-pointer disabled:opacity-50"
                       title="Permanently Delete Subject"

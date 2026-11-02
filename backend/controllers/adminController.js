@@ -3928,6 +3928,184 @@ exports.getSubjects = async (req, res) => {
   }
 };
 
+exports.getSubjectById = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const institutionId = req.currentUser.institution._id;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(404).json({ success: false, error: 'Subject not found' });
+    }
+
+    const subject = await Subject.findOne({
+      _id: id,
+      institution: institutionId
+    }).populate('departmentRef', 'name code');
+
+    if (!subject) {
+      return res.status(404).json({ success: false, error: 'Subject not found' });
+    }
+
+    // Find all active teaching assignments for this subject
+    const assignments = await TeachingAssignment.find({
+      subject: subject._id,
+      institution: institutionId,
+      isActive: { $ne: false }
+    })
+      .populate({
+        path: 'teacher',
+        populate: [
+          { path: 'user', select: 'name email userId isActive' },
+          { path: 'departmentRef', select: 'name code' }
+        ]
+      })
+      .populate({
+        path: 'classRef',
+        populate: { path: 'departmentRef', select: 'name code' }
+      });
+
+    // Helper to resolve study year ('First Year', 'Second Year', etc.)
+    const resolveStudyYear = (subj, asgs = []) => {
+      // 1. Check subject.academicYear
+      if (subj.academicYear) {
+        const val = String(subj.academicYear).trim().toLowerCase();
+        if (!/^\d{4}/.test(val)) {
+          if (val === 'first year' || val === 'first' || val === '1st year' || val === '1st' || val === '1') return 'First Year';
+          if (val === 'second year' || val === 'second' || val === '2nd year' || val === '2nd' || val === '2') return 'Second Year';
+          if (val === 'third year' || val === 'third' || val === '3rd year' || val === '3rd' || val === '3') return 'Third Year';
+          if (val === 'fourth year' || val === 'fourth' || val === '4th year' || val === '4th' || val === '4') return 'Fourth Year';
+        }
+      }
+
+      // 2. Check classes from assignments
+      for (const asg of asgs) {
+        if (asg.classRef?.yearOfStudy) {
+          const y = String(asg.classRef.yearOfStudy).trim();
+          if (/first/i.test(y)) return 'First Year';
+          if (/second/i.test(y)) return 'Second Year';
+          if (/third/i.test(y)) return 'Third Year';
+          if (/fourth/i.test(y)) return 'Fourth Year';
+        }
+      }
+
+      // 3. Check semester numbers
+      const semCandidate = subj.semester || asgs[0]?.classRef?.semester;
+      if (semCandidate) {
+        const match = String(semCandidate).match(/\d+/);
+        if (match) {
+          const num = parseInt(match[0], 10);
+          if (num === 1 || num === 2) return 'First Year';
+          if (num === 3 || num === 4) return 'Second Year';
+          if (num === 5 || num === 6) return 'Third Year';
+          if (num === 7 || num === 8) return 'Fourth Year';
+        }
+      }
+
+      return subj.academicYear || '—';
+    };
+
+    // Group assignments by teacher and collect section information
+    const teacherMap = new Map();
+    const sectionMap = new Map();
+
+    assignments.forEach(asg => {
+      let secName = '';
+      const classDoc = asg.classRef;
+      if (classDoc && classDoc.section) {
+        const rawSec = String(classDoc.section).trim();
+        secName = rawSec.toLowerCase().startsWith('section') ? rawSec : `Section ${rawSec}`;
+      }
+
+      const secKey = classDoc ? String(classDoc._id) : (secName || String(asg._id));
+      if (!sectionMap.has(secKey) && classDoc) {
+        sectionMap.set(secKey, {
+          _id: classDoc._id,
+          name: classDoc.name,
+          section: secName || classDoc.section,
+          rawSection: classDoc.section,
+          academicYear: classDoc.academicYear,
+          yearOfStudy: classDoc.yearOfStudy,
+          semester: classDoc.semester,
+          course: classDoc.course,
+          department: classDoc.departmentRef?.name || classDoc.department || '—',
+          teachers: []
+        });
+      }
+
+      if (asg.teacher) {
+        const tId = String(asg.teacher._id);
+        const tName = asg.teacher.user?.name || asg.teacher.personalInfo?.name || asg.teacher.teacherId;
+        const fId = asg.teacher.teacherId;
+        const desig = asg.teacher.designation || 'Faculty';
+        const tDept = asg.teacher.departmentRef?.name || asg.teacher.department || '—';
+
+        if (!teacherMap.has(tId)) {
+          teacherMap.set(tId, {
+            _id: asg.teacher._id,
+            name: tName,
+            facultyId: fId,
+            designation: desig,
+            department: tDept,
+            assignedSections: [],
+            assignmentIds: []
+          });
+        }
+
+        const tEntry = teacherMap.get(tId);
+        if (secName && !tEntry.assignedSections.includes(secName)) {
+          tEntry.assignedSections.push(secName);
+          tEntry.assignedSections.sort();
+        }
+        tEntry.assignmentIds.push(asg._id);
+
+        if (sectionMap.has(secKey)) {
+          const sEntry = sectionMap.get(secKey);
+          if (!sEntry.teachers.some(t => String(t._id) === tId)) {
+            sEntry.teachers.push({
+              _id: asg.teacher._id,
+              name: tName,
+              facultyId: fId
+            });
+          }
+        }
+      }
+    });
+
+    const assignedTeachers = Array.from(teacherMap.values()).sort((a, b) => a.name.localeCompare(b.name));
+    const sections = Array.from(sectionMap.values()).sort((a, b) => (a.section || '').localeCompare(b.section || ''));
+
+    const studyYear = resolveStudyYear(subject, assignments);
+    const departmentName = subject.departmentRef?.name || subject.department || '—';
+
+    const subjectData = {
+      _id: subject._id,
+      name: subject.name,
+      code: subject.code,
+      department: departmentName,
+      departmentRef: subject.departmentRef,
+      year: studyYear,
+      academicYear: subject.academicYear,
+      semester: subject.semester,
+      subjectType: subject.subjectType || 'Theory',
+      credits: subject.credits !== undefined && subject.credits !== null ? subject.credits : undefined,
+      description: subject.description || '',
+      isActive: subject.isActive,
+      assignedTeachers,
+      sections,
+      totalTeachers: assignedTeachers.length,
+      totalSections: sections.length
+    };
+
+    return res.status(200).json({
+      success: true,
+      subject: subjectData
+    });
+  } catch (error) {
+    console.error('getSubjectById error:', error);
+    return res.status(500).json({ success: false, error: 'Failed to fetch subject details.' });
+  }
+};
+
 exports.createSubject = async (req, res) => {
   try {
     const { name, code, department, description, subjectType, credits, semester, academicYear, isActive } = req.body;

@@ -124,6 +124,10 @@ export const adminApi = {
     const response = await api.get('/admin/subjects');
     return response.data;
   },
+  getSubjectById: async (id) => {
+    const response = await api.get(`/admin/subjects/${id}`);
+    return response.data;
+  },
   createSubject: async (subjectData) => {
     const response = await api.post('/admin/subjects', subjectData);
     return response.data;
