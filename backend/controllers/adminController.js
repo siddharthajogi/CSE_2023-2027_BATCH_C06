@@ -2574,36 +2574,74 @@ exports.getTeacherById = async (req, res) => {
     })
       .populate({
         path: 'subject',
-        select: 'name code department departmentRef credits subjectType academicYear',
+        select: 'name code department departmentRef credits subjectType academicYear semester',
         populate: { path: 'departmentRef', select: 'name code' }
       })
-      .populate('classRef', 'name section academicYear yearOfStudy course department');
+      .populate('classRef', 'name section academicYear yearOfStudy course department semester');
 
-    // Group assignments by subject to avoid duplicate subjects and consolidate sections
+    // Helper to resolve academic study year ('First Year', 'Second Year', etc.)
+    const resolveStudyYear = (asg) => {
+      const candidates = [
+        asg.classRef?.yearOfStudy,
+        asg.subject?.academicYear
+      ];
+
+      for (const candidate of candidates) {
+        if (typeof candidate === 'string') {
+          const trimmed = candidate.trim();
+          if (/^\d{4}/.test(trimmed)) continue; // ignore calendar years like 2026-2027
+
+          if (/first/i.test(trimmed) || trimmed === '1' || trimmed === '1st') return 'First Year';
+          if (/second/i.test(trimmed) || trimmed === '2' || trimmed === '2nd') return 'Second Year';
+          if (/third/i.test(trimmed) || trimmed === '3' || trimmed === '3rd') return 'Third Year';
+          if (/fourth/i.test(trimmed) || trimmed === '4' || trimmed === '4th') return 'Fourth Year';
+        }
+      }
+
+      // Fallback to semester number if study year not explicitly set
+      const semValue = asg.classRef?.semester || asg.subject?.semester;
+      if (semValue) {
+        const semNum = parseInt(String(semValue).replace(/\D/g, ''), 10);
+        if (!isNaN(semNum)) {
+          if (semNum === 1 || semNum === 2) return 'First Year';
+          if (semNum === 3 || semNum === 4) return 'Second Year';
+          if (semNum === 5 || semNum === 6) return 'Third Year';
+          if (semNum === 7 || semNum === 8) return 'Fourth Year';
+        }
+      }
+
+      return '—';
+    };
+
+    // Group assignments by subject and study year to avoid duplicate rows within the same year
+    // while accurately presenting subjects taught across different years
     const subjectMap = new Map();
     assignments.forEach(asg => {
       if (asg.subject) {
         const subId = String(asg.subject._id);
+        const studyYear = resolveStudyYear(asg);
+        const groupKey = `${subId}_${studyYear}`;
+
         let sectionName = '';
         if (asg.classRef && asg.classRef.section) {
           const rawSec = String(asg.classRef.section).trim();
           sectionName = rawSec.toLowerCase().startsWith('section') ? rawSec : `Section ${rawSec}`;
         }
-        const academicYear = asg.subject.academicYear || asg.classRef?.yearOfStudy || asg.academicYear || asg.classRef?.academicYear || '—';
         const deptName = asg.subject.departmentRef?.name || asg.subject.department || '—';
 
-        if (!subjectMap.has(subId)) {
-          subjectMap.set(subId, {
+        if (!subjectMap.has(groupKey)) {
+          subjectMap.set(groupKey, {
             _id: asg.subject._id,
             name: asg.subject.name,
             code: asg.subject.code,
+            year: studyYear,
+            academicYear: studyYear,
             department: deptName,
-            academicYear: academicYear,
             sections: sectionName ? [sectionName] : [],
             assignmentIds: [asg._id]
           });
         } else {
-          const existing = subjectMap.get(subId);
+          const existing = subjectMap.get(groupKey);
           if (sectionName && !existing.sections.includes(sectionName)) {
             existing.sections.push(sectionName);
             existing.sections.sort();
@@ -2614,6 +2652,7 @@ exports.getTeacherById = async (req, res) => {
     });
 
     const assignedSubjects = Array.from(subjectMap.values());
+    assignedSubjects.sort((a, b) => a.name.localeCompare(b.name));
 
     const teacherObj = ensureTeacherQualifications(teacher);
     const resultDoc = teacherObj.toObject ? teacherObj.toObject() : { ...teacherObj };

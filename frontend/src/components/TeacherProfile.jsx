@@ -490,22 +490,22 @@ export default function TeacherProfile() {
         </div>
 
         {teacher.assignedSubjects && teacher.assignedSubjects.length > 0 ? (
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto rounded-lg border border-slate-200 dark:border-slate-800">
             <table className="w-full text-left border-collapse">
               <thead>
-                <tr className="border-b border-slate-200 dark:border-slate-800 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                  <th className="py-3 px-4">Subject Name</th>
-                  <th className="py-3 px-4">Subject Code</th>
-                  <th className="py-3 px-4">Department</th>
-                  <th className="py-3 px-4">Academic Year</th>
-                  <th className="py-3 px-4">Assigned Section(s)</th>
+                <tr className="bg-slate-100 dark:bg-slate-800/90 border-b-2 border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-800 dark:text-slate-100 uppercase tracking-wider">
+                  <th className="py-3 px-4 font-bold text-slate-800 dark:text-slate-100">Subject Name</th>
+                  <th className="py-3 px-4 font-bold text-slate-800 dark:text-slate-100">Subject Code</th>
+                  <th className="py-3 px-4 font-bold text-slate-800 dark:text-slate-100">Year</th>
+                  <th className="py-3 px-4 font-bold text-slate-800 dark:text-slate-100">Department</th>
+                  <th className="py-3 px-4 font-bold text-slate-800 dark:text-slate-100">Assigned Section(s)</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60 text-sm">
-                {teacher.assignedSubjects.map((sub) => (
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60 text-sm bg-white dark:bg-slate-900">
+                {teacher.assignedSubjects.map((sub, idx) => (
                   <tr
-                    key={sub._id || sub.code}
-                    className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-colors"
+                    key={`${sub._id || sub.code}-${sub.year || sub.academicYear || idx}-${idx}`}
+                    className="hover:bg-slate-50/70 dark:hover:bg-slate-800/40 transition-colors"
                   >
                     <td className="py-3.5 px-4 font-semibold text-slate-900 dark:text-slate-100">
                       {sub.name}
@@ -515,18 +515,18 @@ export default function TeacherProfile() {
                         {sub.code}
                       </span>
                     </td>
-                    <td className="py-3.5 px-4 text-slate-600 dark:text-slate-300">
-                      {sub.department || '—'}
+                    <td className="py-3.5 px-4 font-medium text-slate-700 dark:text-slate-200">
+                      {sub.year || sub.academicYear || '—'}
                     </td>
                     <td className="py-3.5 px-4 text-slate-600 dark:text-slate-300">
-                      {sub.academicYear || '—'}
+                      {sub.department || '—'}
                     </td>
                     <td className="py-3.5 px-4">
                       {Array.isArray(sub.sections) && sub.sections.length > 0 ? (
                         <div className="flex flex-wrap gap-1.5">
-                          {sub.sections.map((sec, idx) => (
+                          {sub.sections.map((sec, sIdx) => (
                             <span
-                              key={idx}
+                              key={sIdx}
                               className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700"
                             >
                               {sec}

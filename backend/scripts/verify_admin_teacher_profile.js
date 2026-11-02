@@ -64,12 +64,35 @@ async function runTests() {
   assert(expIdx > qualIdx, '4. Experience (Years) is after Qualifications');
   assert(joinedIdx > expIdx, '5. Joined Date is immediately after Experience (Years)');
 
-  // Verify Subjects Assigned section
+  // Verify Subjects Assigned section and exact column sequence:
+  // 1. Subject Name -> 2. Subject Code -> 3. Year -> 4. Department -> 5. Assigned Section(s)
   assert(content.includes('Subjects Assigned'), 'Subjects Assigned section title is present');
-  assert(content.includes('Subject Name'), 'Subject Name column header is present');
-  assert(content.includes('Subject Code'), 'Subject Code column header is present');
-  assert(content.includes('Academic Year'), 'Academic Year column header is present');
-  assert(content.includes('Assigned Section(s)'), 'Assigned Section(s) column header is present');
+  assert(content.includes('>Subject Name</th>'), '1. Subject Name column header is present');
+  assert(content.includes('>Subject Code</th>'), '2. Subject Code column header is present');
+  assert(content.includes('>Year</th>'), '3. Year column header is present (renamed from Academic Year)');
+  assert(!content.includes('>Academic Year</th>'), 'Academic Year is not in table headers');
+  assert(content.includes('>Department</th>'), '4. Department column header is present');
+  assert(content.includes('>Assigned Section(s)</th>'), '5. Assigned Section(s) column header is present');
+
+  const subNameIdx = content.indexOf('>Subject Name</th>');
+  const subCodeIdx = content.indexOf('>Subject Code</th>', subNameIdx);
+  const yearIdx = content.indexOf('>Year</th>', subCodeIdx);
+  const tableDeptIdx = content.indexOf('>Department</th>', yearIdx);
+  const secIdx = content.indexOf('>Assigned Section(s)</th>', tableDeptIdx);
+
+  assert(subCodeIdx > subNameIdx, 'Column 1 (Subject Name) is before Column 2 (Subject Code)');
+  assert(yearIdx > subCodeIdx, 'Column 2 (Subject Code) is before Column 3 (Year)');
+  assert(tableDeptIdx > yearIdx, 'Column 3 (Year) is before Column 4 (Department)');
+  assert(secIdx > tableDeptIdx, 'Column 4 (Department) is before Column 5 (Assigned Section(s))');
+
+  // Verify visually distinct header styling
+  assert(
+    content.includes('bg-slate-100 dark:bg-slate-800/90') &&
+    content.includes('border-b-2 border-slate-200 dark:border-slate-700') &&
+    content.includes('font-bold text-slate-800 dark:text-slate-100'),
+    'Header row has distinct contrasting background, subtle bottom border, and bold readable column names'
+  );
+
   assert(
     content.includes('No subjects assigned to this teacher yet.'),
     'Clear empty state message is present: "No subjects assigned to this teacher yet."'
@@ -135,27 +158,64 @@ async function runTests() {
       const subjects = res.data.teacher.assignedSubjects;
       console.log(`Teacher ${t001.teacherId} assigned subjects count: ${subjects.length}`);
       subjects.forEach(s => {
-        console.log(`  - ${s.name} (${s.code}): Dept=${s.department}, Year=${s.academicYear}, Sections=[${s.sections.join(', ')}]`);
+        console.log(`  - ${s.name} (${s.code}): Year="${s.year}", Dept="${s.department}", Sections=[${s.sections.join(', ')}]`);
       });
 
-      // Verification of deduplication and section consolidation
-      // CS101 was assigned to both Sec A and Sec B -> should appear once with both sections
+      // Verification of study year values:
+      // Must be 'First Year', 'Second Year', 'Third Year', or 'Fourth Year'
+      // Must NOT contain calendar year '2026-2027' or any 4-digit number
+      const validStudyYears = ['First Year', 'Second Year', 'Third Year', 'Fourth Year'];
+      subjects.forEach(s => {
+        assert(
+          validStudyYears.includes(s.year),
+          `Subject ${s.code} has valid study year: "${s.year}"`
+        );
+        assert(
+          !/^\d{4}/.test(s.year),
+          `Subject ${s.code} does NOT display calendar year in Year column (value: "${s.year}")`
+        );
+      });
+
+      // Check specific expected years for t001
       const cs101 = subjects.find(s => s.code === 'CS101');
-      assert(!!cs101, 'CS101 appears in assigned subjects list');
+      assert(!!cs101 && cs101.year === 'First Year', 'CS101 shows correct assigned study year: "First Year"');
       if (cs101) {
         assert(cs101.sections.length >= 2, `CS101 has multiple sections consolidated (${cs101.sections.join(', ')})`);
         assert(
           cs101.sections.some(s => s.includes('A')) && cs101.sections.some(s => s.includes('B')),
-          'CS101 contains both Section A and Section B without duplicate subject rows'
+          'CS101 contains both Section A and Section B within the same study year'
         );
       }
 
-      // Ensure no duplicate subject IDs
-      const uniqueSubjectIds = new Set(subjects.map(s => String(s._id)));
-      assert(uniqueSubjectIds.size === subjects.length, 'No duplicate subjects in assignedSubjects list');
+      const cse101 = subjects.find(s => s.code === 'CSE101');
+      assert(!!cse101 && cse101.year === 'Fourth Year', 'CSE101 shows correct assigned study year: "Fourth Year"');
+
+      // Ensure no duplicate subject rows within the same year
+      const uniqueKeys = new Set(subjects.map(s => `${s._id}_${s.year}`));
+      assert(uniqueKeys.size === subjects.length, 'No duplicate subject rows within the same study year');
 
       // Verify Joined Date fallback
       assert(!!res.data.teacher.joinedDate, `Joined Date is populated: ${res.data.teacher.joinedDate}`);
+    }
+
+    // Verify all other teachers in the DB to test across First, Second, Third, and Fourth study years
+    console.log('\n--- Testing All Other Teachers for Study Years ---');
+    const teachersList = await TeacherProfile.find({ institution: institution._id });
+    for (const t of teachersList) {
+      const req = mockReq({ id: String(t._id) });
+      const res = mockRes();
+      await adminController.getTeacherById(req, res);
+      const subs = res.data.teacher?.assignedSubjects || [];
+      for (const s of subs) {
+        assert(
+          ['First Year', 'Second Year', 'Third Year', 'Fourth Year'].includes(s.year),
+          `Teacher ${t.teacherId} (${t.personalInfo?.name}) subject ${s.code} has valid study year: "${s.year}"`
+        );
+        assert(
+          !/^\d{4}/.test(s.year),
+          `Teacher ${t.teacherId} subject ${s.code} does NOT have calendar year in Year column`
+        );
+      }
     }
 
     // Test a teacher with NO assigned subjects -> verify empty state data
@@ -175,11 +235,9 @@ async function runTests() {
         Array.isArray(res.data.teacher?.assignedSubjects) && res.data.teacher.assignedSubjects.length === 0,
         'assignedSubjects is an empty array [] for unassigned teacher (triggers empty state UI)'
       );
-    } else {
-      console.log('\n(All teachers in DB currently have assignments; empty array tested via mock)');
     }
 
-    // 4. Test Update Teacher Profile (Edit functionality)
+    // 4. Test Update Teacher Profile (Edit functionality remains intact)
     console.log('\n--- 4. Update Teacher Profile Functional Check ---');
     if (t001) {
       const testJoinedDate = '2023-08-15';
