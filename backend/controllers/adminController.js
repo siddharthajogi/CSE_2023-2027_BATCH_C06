@@ -2676,7 +2676,7 @@ exports.updateTeacher = async (req, res) => {
   session.startTransaction();
   try {
     const { id } = req.params;
-    const { personalInfo, professionalInfo, department, designation } = req.body;
+    const { teacherId, personalInfo, professionalInfo, department, designation } = req.body;
 
     const teacherProfile = await TeacherProfile.findOne({
       _id: id,
@@ -2690,6 +2690,34 @@ exports.updateTeacher = async (req, res) => {
     }
 
     const errors = {};
+
+    // Teacher / Faculty ID validation & uniqueness check
+    const rawTeacherId = teacherId !== undefined ? teacherId : (req.body.facultyId !== undefined ? req.body.facultyId : teacherProfile.teacherId);
+    const cleanTeacherId = typeof rawTeacherId === 'string' ? rawTeacherId.trim() : '';
+
+    if (!cleanTeacherId) {
+      errors.teacherId = 'Teacher / Faculty ID is required';
+    } else if (cleanTeacherId !== teacherProfile.teacherId) {
+      const duplicateTeacher = await TeacherProfile.findOne({
+        _id: { $ne: teacherProfile._id },
+        teacherId: new RegExp(`^${escapeRegex(cleanTeacherId)}$`, 'i')
+      }).session(session);
+
+      const duplicateUser = await User.findOne({
+        _id: { $ne: teacherProfile.user },
+        userId: new RegExp(`^${escapeRegex(cleanTeacherId)}$`, 'i')
+      }).session(session);
+
+      if (duplicateTeacher || duplicateUser) {
+        await session.abortTransaction();
+        session.endSession();
+        return res.status(400).json({
+          success: false,
+          error: `Teacher / Faculty ID "${cleanTeacherId}" already exists. Please choose a unique Faculty ID.`,
+          errors: { teacherId: `Teacher / Faculty ID "${cleanTeacherId}" already exists` }
+        });
+      }
+    }
 
     const rawName = (personalInfo && personalInfo.name) || req.body.name || '';
     const cleanName = typeof rawName === 'string' ? rawName.trim() : '';
@@ -2819,6 +2847,10 @@ exports.updateTeacher = async (req, res) => {
     }
 
     // Update TeacherProfile
+    const previousTeacherId = teacherProfile.teacherId;
+    if (cleanTeacherId) {
+      teacherProfile.teacherId = cleanTeacherId;
+    }
     teacherProfile.department = cleanDepartment;
     if (targetDeptDoc) teacherProfile.departmentRef = targetDeptDoc._id;
     teacherProfile.designation = cleanDesignation;
@@ -2840,23 +2872,30 @@ exports.updateTeacher = async (req, res) => {
 
     await teacherProfile.save({ session });
 
-    // Update user name without touching password, role, or isActive
+    // Update user name, email, and login userId without touching password, role, or isActive
     const user = await User.findById(teacherProfile.user).session(session);
     if (user) {
       user.name = cleanName;
+      user.email = cleanEmail;
       user.qualifications = cleanQualifications;
       user.highestQualification = cleanQualification;
       user.yearsOfExperience = Number(expValue);
       if (cleanSpecialization) user.specialization = cleanSpecialization;
+      if (cleanTeacherId && cleanTeacherId.toLowerCase() !== user.userId) {
+        user.userId = cleanTeacherId.toLowerCase();
+      }
       await user.save({ session });
     }
 
-    await logAudit(req.currentUser.institution._id, req.currentUser._id, 'UPDATE_TEACHER', teacherProfile._id, 'TeacherProfile', { teacherId: teacherProfile.teacherId });
+    await logAudit(req.currentUser.institution._id, req.currentUser._id, 'UPDATE_TEACHER', teacherProfile._id, 'TeacherProfile', {
+      teacherId: teacherProfile.teacherId,
+      previousTeacherId: previousTeacherId !== teacherProfile.teacherId ? previousTeacherId : undefined
+    });
 
     await session.commitTransaction();
     session.endSession();
 
-    const updatedTeacher = await TeacherProfile.findById(id).populate('user', 'name isActive createdAt mustChangePassword');
+    const updatedTeacher = await TeacherProfile.findById(id).populate('user', 'userId name email role isActive createdAt mustChangePassword');
     res.status(200).json({
       success: true,
       message: 'Teacher updated successfully',

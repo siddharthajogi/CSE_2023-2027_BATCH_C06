@@ -47,6 +47,7 @@ export default function TeacherProfile() {
 
   const [editFormData, setEditFormData] = useState({
     name: '',
+    teacherId: '',
     email: '',
     phone: '',
     address: '',
@@ -191,6 +192,7 @@ export default function TeacherProfile() {
 
     setEditFormData({
       name: teacher.user?.name || teacher.personalInfo?.name || '',
+      teacherId: teacher.teacherId || '',
       email: teacher.personalInfo?.email || '',
       phone: teacher.personalInfo?.phone || '',
       address: teacher.personalInfo?.address || '',
@@ -217,12 +219,18 @@ export default function TeacherProfile() {
     setEditSaving(true);
 
     try {
+      const cleanTeacherId = (editFormData.teacherId || '').trim();
+      if (!cleanTeacherId) {
+        throw new Error('Teacher / Faculty ID is required.');
+      }
+
       const finalQuals = editFormData.qualifications || [];
       if (finalQuals.length === 0) {
         throw new Error('Please select at least one qualification.');
       }
 
       const payload = {
+        teacherId: cleanTeacherId,
         department: editFormData.department.trim(),
         designation: editFormData.designation.trim(),
         personalInfo: {
@@ -561,7 +569,7 @@ export default function TeacherProfile() {
             <div className="flex justify-between items-center p-6 border-b border-slate-200 dark:border-slate-800 sticky top-0 bg-white dark:bg-slate-900 z-10">
               <div>
                 <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100">Edit Teacher Profile</h3>
-                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Teacher ID: {teacher.teacherId} (Read-only)</p>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Update teacher personal details, Faculty ID, and professional information.</p>
               </div>
               <button
                 onClick={() => setIsEditOpen(false)}
@@ -600,6 +608,21 @@ export default function TeacherProfile() {
 
                   <div>
                     <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
+                      Teacher / Faculty ID <span className="text-rose-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      name="teacherId"
+                      value={editFormData.teacherId}
+                      onChange={handleEditChange}
+                      required
+                      className="w-full px-3 py-2 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-lg text-sm font-mono focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                      placeholder="e.g. t001"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
                       Email Address <span className="text-rose-500">*</span>
                     </label>
                     <input
@@ -626,7 +649,7 @@ export default function TeacherProfile() {
                     />
                   </div>
 
-                  <div>
+                  <div className="sm:col-span-2">
                     <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
                       Address <span className="text-rose-500">*</span>
                     </label>

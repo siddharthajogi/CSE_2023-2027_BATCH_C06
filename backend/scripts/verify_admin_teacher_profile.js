@@ -93,10 +93,24 @@ async function runTests() {
     'Header row has distinct contrasting background, subtle bottom border, and bold readable column names'
   );
 
+  // Verify subjects assigned section and empty state
   assert(
     content.includes('No subjects assigned to this teacher yet.'),
     'Clear empty state message is present: "No subjects assigned to this teacher yet."'
   );
+
+  // Verify Faculty ID is editable in TeacherProfile.jsx
+  assert(!content.includes('(Read-only)'), 'Read-only tag is removed from Edit Teacher Profile modal');
+  assert(content.includes('name="teacherId"'), 'Teacher / Faculty ID input exists in Edit Teacher Profile form');
+  assert(!content.includes('<input\n                      type="text"\n                      value={editFormData.teacherId}\n                      disabled'), 'Teacher ID input is not disabled');
+
+  // Verify TeacherList.jsx also has editable Faculty ID
+  const teacherListPath = path.resolve(__dirname, '../../frontend/src/components/TeacherList.jsx');
+  assert(fs.existsSync(teacherListPath), 'TeacherList.jsx exists');
+  const teacherListContent = fs.readFileSync(teacherListPath, 'utf8');
+  assert(!teacherListContent.includes('Teacher/Faculty ID (Read-only)'), 'Read-only label removed from TeacherList.jsx');
+  assert(teacherListContent.includes('name="teacherId"'), 'Teacher / Faculty ID input exists in TeacherList.jsx');
+  assert(teacherListContent.includes('teacherId: editFormData.teacherId.trim()'), 'teacherId is included in TeacherList.jsx update payload');
 
   // 2. Scope verification: TeacherProfilePage.jsx is untouched
   console.log('\n--- 2. Scope Boundary Verification ---');
@@ -281,6 +295,141 @@ async function runTests() {
         new Date(refetchRes.data.teacher?.joinedDate).toISOString().startsWith('2023-08-15'),
         `Joined Date persisted latest saved value: 2023-08-15`
       );
+    }
+
+    // 5. Test Teacher / Faculty ID Editing
+    console.log('\n--- 5. Teacher / Faculty ID Editing Functional & Security Verification ---');
+    if (t001) {
+      // 5.1 Test Empty Teacher ID
+      const emptyIdReq = mockReq(
+        { id: String(t001._id) },
+        {
+          teacherId: '',
+          department: t001.department,
+          designation: t001.designation,
+          personalInfo: {
+            name: t001.personalInfo.name,
+            email: t001.personalInfo.email,
+            phone: t001.personalInfo.phone,
+            address: t001.personalInfo.address
+          },
+          professionalInfo: {
+            qualifications: t001.professionalInfo.qualifications,
+            highestQualification: t001.professionalInfo.highestQualification,
+            yearsOfExperience: 5
+          }
+        }
+      );
+      const emptyIdRes = mockRes();
+      await adminController.updateTeacher(emptyIdReq, emptyIdRes);
+      assert(emptyIdRes.statusCode === 400, 'Empty teacherId returns 400 Bad Request');
+      assert(!!emptyIdRes.data?.errors?.teacherId, 'Validation error mentions teacherId is required');
+
+      // 5.2 Test Duplicate Teacher ID with another teacher
+      const otherTeacher = await TeacherProfile.findOne({ _id: { $ne: t001._id } });
+      if (otherTeacher) {
+        const duplicateIdReq = mockReq(
+          { id: String(t001._id) },
+          {
+            teacherId: otherTeacher.teacherId,
+            department: t001.department,
+            designation: t001.designation,
+            personalInfo: {
+              name: t001.personalInfo.name,
+              email: t001.personalInfo.email,
+              phone: t001.personalInfo.phone,
+              address: t001.personalInfo.address
+            },
+            professionalInfo: {
+              qualifications: t001.professionalInfo.qualifications,
+              highestQualification: t001.professionalInfo.highestQualification,
+              yearsOfExperience: 5
+            }
+          }
+        );
+        const duplicateIdRes = mockRes();
+        await adminController.updateTeacher(duplicateIdReq, duplicateIdRes);
+        assert(duplicateIdRes.statusCode === 400, 'Duplicate teacherId returns 400 Bad Request');
+        assert(
+          duplicateIdRes.data?.error?.includes('already exists') || duplicateIdRes.data?.errors?.teacherId?.includes('already exists'),
+          'Duplicate teacherId returns clear "already exists" error message'
+        );
+      }
+
+      // 5.3 Test Successful Update of Teacher ID to a new unique ID
+      const originalTeacherId = t001.teacherId;
+      const initialUser = await User.findById(t001.user);
+      const originalUserId = initialUser?.userId;
+      const originalPasswordHash = initialUser?.password;
+      const initialAssignmentCount = await TeachingAssignment.countDocuments({ teacher: t001._id });
+      const newTestTeacherId = `t001_edited`;
+
+      const updateIdReq = mockReq(
+        { id: String(t001._id) },
+        {
+          teacherId: newTestTeacherId,
+          department: t001.department,
+          designation: t001.designation,
+          personalInfo: {
+            name: t001.personalInfo.name,
+            email: t001.personalInfo.email,
+            phone: t001.personalInfo.phone,
+            address: t001.personalInfo.address
+          },
+          professionalInfo: {
+            qualifications: t001.professionalInfo.qualifications,
+            highestQualification: t001.professionalInfo.highestQualification,
+            yearsOfExperience: 5
+          }
+        }
+      );
+      const updateIdRes = mockRes();
+      await adminController.updateTeacher(updateIdReq, updateIdRes);
+
+      assert(updateIdRes.statusCode === 200, 'updateTeacher with new unique teacherId returns 200');
+      assert(updateIdRes.data?.teacher?.teacherId === newTestTeacherId, `TeacherProfile.teacherId is updated to "${newTestTeacherId}"`);
+
+      // Verify DB documents directly
+      const updatedTeacherDoc = await TeacherProfile.findById(t001._id);
+      const updatedUserDoc = await User.findById(t001.user);
+      assert(updatedTeacherDoc.teacherId === newTestTeacherId, `Direct DB check: TeacherProfile.teacherId is "${newTestTeacherId}"`);
+      assert(updatedUserDoc.userId === newTestTeacherId.toLowerCase(), `Direct DB check: User.userId is updated to "${newTestTeacherId.toLowerCase()}"`);
+
+      // Verify teaching assignments remain 100% intact
+      const postAssignmentCount = await TeachingAssignment.countDocuments({ teacher: t001._id });
+      assert(postAssignmentCount === initialAssignmentCount, `Teaching assignments preserved: ${postAssignmentCount} assignments intact`);
+
+      // Verify teacher account credentials/password hash intact
+      assert(updatedUserDoc.password === originalPasswordHash, 'Teacher account password hash remains identical, intact, and untouched after ID update');
+
+      // 5.4 Test Restoring back to original teacher ID
+      const restoreIdReq = mockReq(
+        { id: String(t001._id) },
+        {
+          teacherId: originalTeacherId,
+          department: t001.department,
+          designation: t001.designation,
+          personalInfo: {
+            name: t001.personalInfo.name,
+            email: t001.personalInfo.email,
+            phone: t001.personalInfo.phone,
+            address: t001.personalInfo.address
+          },
+          professionalInfo: {
+            qualifications: t001.professionalInfo.qualifications,
+            highestQualification: t001.professionalInfo.highestQualification,
+            yearsOfExperience: 5
+          }
+        }
+      );
+      const restoreIdRes = mockRes();
+      await adminController.updateTeacher(restoreIdReq, restoreIdRes);
+
+      assert(restoreIdRes.statusCode === 200, 'updateTeacher restored original teacherId with status 200');
+      const restoredTeacherDoc = await TeacherProfile.findById(t001._id);
+      const restoredUserDoc = await User.findById(t001.user);
+      assert(restoredTeacherDoc.teacherId === originalTeacherId, `TeacherProfile restored to "${originalTeacherId}"`);
+      assert(restoredUserDoc.userId === originalUserId, `User.userId restored to "${originalUserId}"`);
     }
 
   } catch (err) {

@@ -250,6 +250,9 @@ export default function TeacherList() {
   const validateEdit = () => {
     const errs = {};
     if (!editFormData.name || !editFormData.name.trim()) errs.name = 'Full Name is required';
+    if (!editFormData.teacherId || !editFormData.teacherId.trim()) {
+      errs.teacherId = 'Teacher / Faculty ID is required';
+    }
     if (!editFormData.email || !editFormData.email.trim()) {
       errs.email = 'Email Address is required';
     } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(editFormData.email.trim())) {
@@ -312,6 +315,7 @@ export default function TeacherList() {
     setEditLoading(true);
     try {
       const payload = {
+        teacherId: editFormData.teacherId.trim(),
         department: editFormData.department.trim(),
         designation: editFormData.designation.trim(),
         personalInfo: {
@@ -579,8 +583,8 @@ export default function TeacherList() {
     // 5. Status filter from summary cards
     const matchesStatus =
       statusFilter === 'ACTIVE' ? Boolean(t.user?.isActive) :
-      statusFilter === 'INACTIVE' ? !t.user?.isActive :
-      true;
+        statusFilter === 'INACTIVE' ? !t.user?.isActive :
+          true;
 
     return matchesSearch && matchesDept && matchesDesig && matchesSubject && matchesStatus;
   });
@@ -596,11 +600,10 @@ export default function TeacherList() {
         <button
           type="button"
           onClick={() => setStatusFilter('ALL')}
-          className={`p-4 rounded-xl border text-left transition-all duration-150 cursor-pointer flex items-center justify-between ${
-            statusFilter === 'ALL'
+          className={`p-4 rounded-xl border text-left transition-all duration-150 cursor-pointer flex items-center justify-between ${statusFilter === 'ALL'
               ? 'bg-indigo-50/70 dark:bg-indigo-950/40 border-indigo-500 dark:border-indigo-500 ring-2 ring-indigo-500/20 dark:ring-indigo-500/30 shadow-sm'
               : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 shadow-sm hover:border-indigo-300 dark:hover:border-indigo-800/80 hover:shadow-md'
-          }`}
+            }`}
           aria-pressed={statusFilter === 'ALL'}
           aria-label="Show all teachers"
         >
@@ -616,11 +619,10 @@ export default function TeacherList() {
         <button
           type="button"
           onClick={() => setStatusFilter('ACTIVE')}
-          className={`p-4 rounded-xl border text-left transition-all duration-150 cursor-pointer flex items-center justify-between ${
-            statusFilter === 'ACTIVE'
+          className={`p-4 rounded-xl border text-left transition-all duration-150 cursor-pointer flex items-center justify-between ${statusFilter === 'ACTIVE'
               ? 'bg-emerald-50/70 dark:bg-emerald-950/40 border-emerald-500 dark:border-emerald-500 ring-2 ring-emerald-500/20 dark:ring-emerald-500/30 shadow-sm'
               : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 shadow-sm hover:border-emerald-300 dark:hover:border-emerald-800/80 hover:shadow-md'
-          }`}
+            }`}
           aria-pressed={statusFilter === 'ACTIVE'}
           aria-label="Filter active teachers"
         >
@@ -636,11 +638,10 @@ export default function TeacherList() {
         <button
           type="button"
           onClick={() => setStatusFilter('INACTIVE')}
-          className={`p-4 rounded-xl border text-left transition-all duration-150 cursor-pointer flex items-center justify-between ${
-            statusFilter === 'INACTIVE'
+          className={`p-4 rounded-xl border text-left transition-all duration-150 cursor-pointer flex items-center justify-between ${statusFilter === 'INACTIVE'
               ? 'bg-slate-100 dark:bg-slate-800 border-slate-500 dark:border-slate-400 ring-2 ring-slate-500/20 dark:ring-slate-400/30 shadow-sm'
               : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 shadow-sm hover:border-slate-400 dark:hover:border-slate-700 hover:shadow-md'
-          }`}
+            }`}
           aria-pressed={statusFilter === 'INACTIVE'}
           aria-label="Filter inactive teachers"
         >
@@ -746,91 +747,91 @@ export default function TeacherList() {
                 <th className="px-6 py-4 font-semibold text-right bg-slate-50 dark:bg-slate-800">Actions</th>
               </tr>
             </thead>
-          <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
-            {filtered.map((t) => (
-              <tr
-                key={t._id}
-                onClick={() => navigate(`/admin/teachers/${t._id}`)}
-                className="hover:bg-indigo-50/40 dark:hover:bg-slate-800/60 cursor-pointer transition-colors group"
-                title="Click to view teacher profile"
-              >
-                <td className="px-6 py-4 font-mono font-medium text-slate-900 dark:text-slate-100 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
-                  <Link
-                    to={`/admin/teachers/${t._id}`}
-                    onClick={(e) => e.stopPropagation()}
-                    className="hover:underline"
-                  >
-                    {t.teacherId}
-                  </Link>
-                </td>
-                <td className="px-6 py-4 font-medium text-slate-800 dark:text-slate-200">
-                  <Link
-                    to={`/admin/teachers/${t._id}`}
-                    onClick={(e) => e.stopPropagation()}
-                    className="hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
-                  >
-                    {t.user?.name || 'Name not available'}
-                  </Link>
-                </td>
-                <td className="px-6 py-4 text-slate-600 dark:text-slate-400">{resolveDeptName(t)}</td>
-                <td className="px-6 py-4 text-slate-600 dark:text-slate-400">{t.designation}</td>
-                <td className="px-6 py-4">
-                  <span className={`inline-flex px-2.5 py-1 rounded-full text-xs font-medium ${t.user?.isActive ? 'bg-green-100 dark:bg-green-950/60 text-green-700 dark:text-green-300' : 'bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300'}`}>
-                    {t.user?.isActive ? 'Active' : 'Inactive'}
-                  </span>
-                </td>
-                <td
-                  className="px-6 py-4 text-right flex justify-end items-center gap-3"
-                  onClick={(e) => e.stopPropagation()}
+            <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
+              {filtered.map((t) => (
+                <tr
+                  key={t._id}
+                  onClick={() => navigate(`/admin/teachers/${t._id}`)}
+                  className="hover:bg-indigo-50/40 dark:hover:bg-slate-800/60 cursor-pointer transition-colors group"
+                  title="Click to view teacher profile"
                 >
-                  <button
-                    onClick={() => toggleStatus(t)}
-                    className="text-sm text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 font-medium cursor-pointer"
-                  >
-                    {t.user?.isActive ? 'Deactivate' : 'Activate'}
-                  </button>
-                  <button
-                    onClick={() => openResetPasswordModal(t)}
-                    className="text-sm text-amber-600 dark:text-amber-400 hover:text-amber-900 dark:hover:text-amber-300 font-medium flex items-center gap-1 cursor-pointer"
-                    title="Reset Teacher Password"
-                  >
-                    <ShieldAlert className="w-4 h-4" /> Reset Pwd
-                  </button>
-                  <button
-                    onClick={() => openDeleteModal(t)}
-                    className="text-sm text-rose-600 dark:text-rose-400 hover:text-rose-900 dark:hover:text-rose-300 font-medium flex items-center gap-1 cursor-pointer"
-                    title="Permanently Delete Teacher"
-                  >
-                    <Trash2 className="w-4 h-4" /> Delete
-                  </button>
-                </td>
-              </tr>
-            ))}
-            {filtered.length === 0 && (
-              <tr>
-                <td colSpan="6" className="px-6 py-12 text-center text-slate-500 dark:text-slate-400">
-                  <p className="text-base font-medium">No teachers found matching the selected filters.</p>
-                  {(statusFilter !== 'ALL' || filterDepartment || filterDesignation || filterSubject || searchTerm) && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setStatusFilter('ALL');
-                        setFilterDepartment('');
-                        setFilterDesignation('');
-                        setFilterSubject('');
-                        setSearchTerm('');
-                      }}
-                      className="mt-2 inline-flex items-center text-sm text-indigo-600 dark:text-indigo-400 hover:underline font-medium cursor-pointer"
+                  <td className="px-6 py-4 font-mono font-medium text-slate-900 dark:text-slate-100 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
+                    <Link
+                      to={`/admin/teachers/${t._id}`}
+                      onClick={(e) => e.stopPropagation()}
+                      className="hover:underline"
                     >
-                      Reset all filters
+                      {t.teacherId}
+                    </Link>
+                  </td>
+                  <td className="px-6 py-4 font-medium text-slate-800 dark:text-slate-200">
+                    <Link
+                      to={`/admin/teachers/${t._id}`}
+                      onClick={(e) => e.stopPropagation()}
+                      className="hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
+                    >
+                      {t.user?.name || 'Name not available'}
+                    </Link>
+                  </td>
+                  <td className="px-6 py-4 text-slate-600 dark:text-slate-400">{resolveDeptName(t)}</td>
+                  <td className="px-6 py-4 text-slate-600 dark:text-slate-400">{t.designation}</td>
+                  <td className="px-6 py-4">
+                    <span className={`inline-flex px-2.5 py-1 rounded-full text-xs font-medium ${t.user?.isActive ? 'bg-green-100 dark:bg-green-950/60 text-green-700 dark:text-green-300' : 'bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300'}`}>
+                      {t.user?.isActive ? 'Active' : 'Inactive'}
+                    </span>
+                  </td>
+                  <td
+                    className="px-6 py-4 text-right flex justify-end items-center gap-3"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <button
+                      onClick={() => toggleStatus(t)}
+                      className="text-sm text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 font-medium cursor-pointer"
+                    >
+                      {t.user?.isActive ? 'Deactivate' : 'Activate'}
                     </button>
-                  )}
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+                    <button
+                      onClick={() => openResetPasswordModal(t)}
+                      className="text-sm text-amber-600 dark:text-amber-400 hover:text-amber-900 dark:hover:text-amber-300 font-medium flex items-center gap-1 cursor-pointer"
+                      title="Reset Teacher Password"
+                    >
+                      <ShieldAlert className="w-4 h-4" /> Reset Pwd
+                    </button>
+                    <button
+                      onClick={() => openDeleteModal(t)}
+                      className="text-sm text-rose-600 dark:text-rose-400 hover:text-rose-900 dark:hover:text-rose-300 font-medium flex items-center gap-1 cursor-pointer"
+                      title="Permanently Delete Teacher"
+                    >
+                      <Trash2 className="w-4 h-4" /> Delete
+                    </button>
+                  </td>
+                </tr>
+              ))}
+              {filtered.length === 0 && (
+                <tr>
+                  <td colSpan="6" className="px-6 py-12 text-center text-slate-500 dark:text-slate-400">
+                    <p className="text-base font-medium">No teachers found matching the selected filters.</p>
+                    {(statusFilter !== 'ALL' || filterDepartment || filterDesignation || filterSubject || searchTerm) && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setStatusFilter('ALL');
+                          setFilterDepartment('');
+                          setFilterDesignation('');
+                          setFilterSubject('');
+                          setSearchTerm('');
+                        }}
+                        className="mt-2 inline-flex items-center text-sm text-indigo-600 dark:text-indigo-400 hover:underline font-medium cursor-pointer"
+                      >
+                        Reset all filters
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {/* Edit Teacher Modal */}
@@ -883,14 +884,21 @@ export default function TeacherList() {
 
                   <div>
                     <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
-                      Teacher/Faculty ID (Read-only)
+                      Teacher / Faculty ID <span className="text-rose-500">*</span>
                     </label>
                     <input
                       type="text"
+                      name="teacherId"
                       value={editFormData.teacherId}
-                      disabled
-                      className="w-full px-3 py-2 text-sm border rounded-lg bg-slate-100 dark:bg-slate-800/60 text-slate-500 dark:text-slate-400 cursor-not-allowed border-slate-300 dark:border-slate-700"
+                      onChange={handleEditChange}
+                      required
+                      className={`w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-indigo-500 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-mono ${editErrors.teacherId ? 'border-rose-500 ring-1 ring-rose-500' : 'border-slate-300 dark:border-slate-700'
+                        }`}
+                      placeholder="e.g. t001"
                     />
+                    {editErrors.teacherId && (
+                      <p className="text-xs text-rose-600 dark:text-rose-400 mt-1 font-medium">{editErrors.teacherId}</p>
+                    )}
                   </div>
 
                   <div>
@@ -1247,8 +1255,8 @@ export default function TeacherList() {
 
               {/* Option 1: Unassign */}
               <label className={`flex items-start gap-2.5 p-2.5 rounded-xl border cursor-pointer transition-all ${resolutionMode === 'unassign'
-                  ? 'border-indigo-500 bg-indigo-50/40 dark:bg-indigo-950/20 ring-1 ring-indigo-500'
-                  : 'border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800/50'
+                ? 'border-indigo-500 bg-indigo-50/40 dark:bg-indigo-950/20 ring-1 ring-indigo-500'
+                : 'border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800/50'
                 }`}>
                 <input
                   type="radio"
@@ -1268,8 +1276,8 @@ export default function TeacherList() {
 
               {/* Option 2: Reassign */}
               <label className={`flex items-start gap-2.5 p-2.5 rounded-xl border cursor-pointer transition-all ${resolutionMode === 'reassign'
-                  ? 'border-indigo-500 bg-indigo-50/40 dark:bg-indigo-950/20 ring-1 ring-indigo-500'
-                  : 'border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800/50'
+                ? 'border-indigo-500 bg-indigo-50/40 dark:bg-indigo-950/20 ring-1 ring-indigo-500'
+                : 'border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800/50'
                 }`}>
                 <input
                   type="radio"
