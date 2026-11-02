@@ -8,8 +8,8 @@ const TeacherProfile = require('../models/TeacherProfile');
 async function check() {
   await mongoose.connect(process.env.MONGODB_URI);
   const assignments = await TeachingAssignment.find({})
-    .populate('subject', 'code name')
-    .populate('classRef', 'name section')
+    .populate('subject')
+    .populate('classRef')
     .populate('teacher', 'teacherId personalInfo');
 
   console.log('Total TeachingAssignments in DB:', assignments.length);
@@ -18,7 +18,12 @@ async function check() {
       id: a._id,
       subjectCode: a.subject?.code,
       subjectName: a.subject?.name,
-      section: a.classRef ? `${a.classRef.name} - ${a.classRef.section}` : null,
+      subjectDept: a.subject?.department,
+      subjectAcademicYear: a.subject?.academicYear,
+      assignmentAcademicYear: a.academicYear,
+      classSection: a.classRef?.section,
+      classYearOfStudy: a.classRef?.yearOfStudy,
+      classAcademicYear: a.classRef?.academicYear,
       teacherId: a.teacher?.teacherId || null,
       teacherName: a.teacher?.personalInfo?.name || null,
       isActive: a.isActive

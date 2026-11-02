@@ -17,8 +17,10 @@ const teacherProfileSchema = new mongoose.Schema({
     qualifications: { type: [String], default: [] },
     highestQualification: { type: String, trim: true },
     specialization: { type: String },
-    yearsOfExperience: { type: Number, default: 0 }
-  }
+    yearsOfExperience: { type: Number, default: 0 },
+    joinedDate: { type: Date }
+  },
+  joinedDate: { type: Date }
 }, { timestamps: true });
 
 module.exports = mongoose.model('TeacherProfile', teacherProfileSchema);

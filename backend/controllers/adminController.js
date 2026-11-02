@@ -2376,10 +2376,26 @@ exports.createTeacher = async (req, res) => {
     }
     const cleanQualification = cleanQualifications.join(', ');
 
-    const rawSpec = (professionalInfo && professionalInfo.specialization) || req.body.specialization || '';
-    const cleanSpecialization = typeof rawSpec === 'string' ? rawSpec.trim() : '';
-    if (!cleanSpecialization || cleanSpecialization.toLowerCase().startsWith('select')) {
-      errors.specialization = 'Specialization is required';
+    const rawSpec = (professionalInfo && professionalInfo.specialization) !== undefined
+      ? professionalInfo.specialization
+      : req.body.specialization;
+    const cleanSpecialization = typeof rawSpec === 'string' && rawSpec.trim() && !rawSpec.trim().toLowerCase().startsWith('select')
+      ? rawSpec.trim()
+      : (teacherProfile.professionalInfo?.specialization || '');
+
+    const rawJoinedDate = (professionalInfo && professionalInfo.joinedDate) !== undefined
+      ? professionalInfo.joinedDate
+      : req.body.joinedDate;
+    let cleanJoinedDate = undefined;
+    if (rawJoinedDate !== undefined) {
+      if (!rawJoinedDate) {
+        cleanJoinedDate = null;
+      } else {
+        const parsedDate = new Date(rawJoinedDate);
+        if (!isNaN(parsedDate.getTime())) {
+          cleanJoinedDate = parsedDate;
+        }
+      }
     }
 
     const expValue = (professionalInfo && professionalInfo.yearsOfExperience !== undefined) ? professionalInfo.yearsOfExperience : req.body.yearsOfExperience;
@@ -2566,7 +2582,66 @@ exports.getTeacherById = async (req, res) => {
       return res.status(404).json({ success: false, error: 'Teacher not found' });
     }
 
-    res.status(200).json({ success: true, teacher: ensureTeacherQualifications(teacher) });
+    // Fetch teaching assignments for this teacher
+    const assignments = await TeachingAssignment.find({
+      teacher: teacher._id,
+      institution: req.currentUser.institution._id,
+      isActive: { $ne: false }
+    })
+      .populate({
+        path: 'subject',
+        select: 'name code department departmentRef credits subjectType academicYear',
+        populate: { path: 'departmentRef', select: 'name code' }
+      })
+      .populate('classRef', 'name section academicYear yearOfStudy course department');
+
+    // Group assignments by subject to avoid duplicate subjects and consolidate sections
+    const subjectMap = new Map();
+    assignments.forEach(asg => {
+      if (asg.subject) {
+        const subId = String(asg.subject._id);
+        let sectionName = '';
+        if (asg.classRef && asg.classRef.section) {
+          const rawSec = String(asg.classRef.section).trim();
+          sectionName = rawSec.toLowerCase().startsWith('section') ? rawSec : `Section ${rawSec}`;
+        }
+        const academicYear = asg.subject.academicYear || asg.classRef?.yearOfStudy || asg.academicYear || asg.classRef?.academicYear || '—';
+        const deptName = asg.subject.departmentRef?.name || asg.subject.department || '—';
+
+        if (!subjectMap.has(subId)) {
+          subjectMap.set(subId, {
+            _id: asg.subject._id,
+            name: asg.subject.name,
+            code: asg.subject.code,
+            department: deptName,
+            academicYear: academicYear,
+            sections: sectionName ? [sectionName] : [],
+            assignmentIds: [asg._id]
+          });
+        } else {
+          const existing = subjectMap.get(subId);
+          if (sectionName && !existing.sections.includes(sectionName)) {
+            existing.sections.push(sectionName);
+            existing.sections.sort();
+          }
+          existing.assignmentIds.push(asg._id);
+        }
+      }
+    });
+
+    const assignedSubjects = Array.from(subjectMap.values());
+
+    const teacherObj = ensureTeacherQualifications(teacher);
+    const resultDoc = teacherObj.toObject ? teacherObj.toObject() : { ...teacherObj };
+    resultDoc.assignedSubjects = assignedSubjects;
+    if (!resultDoc.joinedDate && !resultDoc.professionalInfo?.joinedDate) {
+      const fallbackDate = teacher.createdAt || teacher.user?.createdAt;
+      resultDoc.joinedDate = fallbackDate;
+      if (!resultDoc.professionalInfo) resultDoc.professionalInfo = {};
+      resultDoc.professionalInfo.joinedDate = fallbackDate;
+    }
+
+    res.status(200).json({ success: true, teacher: resultDoc });
   } catch (error) {
     console.error('Error fetching teacher by ID:', error);
     res.status(500).json({ success: false, error: 'Failed to fetch teacher' });
@@ -2658,10 +2733,26 @@ exports.updateTeacher = async (req, res) => {
     }
     const cleanQualification = cleanQualifications.join(', ');
 
-    const rawSpec = (professionalInfo && professionalInfo.specialization) || req.body.specialization || '';
-    const cleanSpecialization = typeof rawSpec === 'string' ? rawSpec.trim() : '';
-    if (!cleanSpecialization || cleanSpecialization.toLowerCase().startsWith('select')) {
-      errors.specialization = 'Specialization is required';
+    const rawSpec = (professionalInfo && professionalInfo.specialization) !== undefined
+      ? professionalInfo.specialization
+      : req.body.specialization;
+    const cleanSpecialization = typeof rawSpec === 'string' && rawSpec.trim() && !rawSpec.trim().toLowerCase().startsWith('select')
+      ? rawSpec.trim()
+      : (teacherProfile.professionalInfo?.specialization || '');
+
+    const rawJoinedDate = (professionalInfo && professionalInfo.joinedDate) !== undefined
+      ? professionalInfo.joinedDate
+      : req.body.joinedDate;
+    let cleanJoinedDate = undefined;
+    if (rawJoinedDate !== undefined) {
+      if (!rawJoinedDate) {
+        cleanJoinedDate = null;
+      } else {
+        const parsedDate = new Date(rawJoinedDate);
+        if (!isNaN(parsedDate.getTime())) {
+          cleanJoinedDate = parsedDate;
+        }
+      }
     }
 
     const expValue = (professionalInfo && professionalInfo.yearsOfExperience !== undefined) ? professionalInfo.yearsOfExperience : req.body.yearsOfExperience;
