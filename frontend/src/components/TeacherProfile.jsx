@@ -37,56 +37,13 @@ export default function TeacherProfile() {
   const [editSaving, setEditSaving] = useState(false);
   const [editError, setEditError] = useState('');
 
-  // 1. Personal Information Edit Modal State
-  const [isEditPersonalOpen, setIsEditPersonalOpen] = useState(false);
-  const [personalSaving, setPersonalSaving] = useState(false);
-  const [personalError, setPersonalError] = useState('');
-  const [personalFormData, setPersonalFormData] = useState({
-    name: '',
-    email: '',
-    phone: '',
-    address: ''
-  });
-
-  // 2. Professional Information Edit Modal State
-  const [isEditProfessionalOpen, setIsEditProfessionalOpen] = useState(false);
-  const [professionalSaving, setProfessionalSaving] = useState(false);
-  const [professionalError, setProfessionalError] = useState('');
-  const [professionalFormData, setProfessionalFormData] = useState({
-    department: '',
-    designation: '',
-    qualifications: [],
-    highestQualification: '',
-    specialization: '',
-    yearsOfExperience: ''
-  });
-
-  const [profDepartmentSelect, setProfDepartmentSelect] = useState('');
-  const [profDesignationSelect, setProfDesignationSelect] = useState('');
-  const [profQualificationSelect, setProfQualificationSelect] = useState('');
-  const [profSpecializationSelect, setProfSpecializationSelect] = useState('');
-
   const [departmentSelect, setDepartmentSelect] = useState('');
   const [loadingDepts, setLoadingDepts] = useState(false);
   const [deptError, setDeptError] = useState('');
   const [designationSelect, setDesignationSelect] = useState('');
-  const [qualificationSelect, setQualificationSelect] = useState('');
-  const [specializationSelect, setSpecializationSelect] = useState('');
 
   const designationsList = ['Professor', 'Associate Professor', 'Assistant Professor', 'Lecturer', 'Head of Department'];
   const qualificationsList = ['Ph.D.', 'M.Tech', 'M.Sc.', 'MCA', 'M.Phil', 'B.Tech', 'B.Sc.'];
-  const specializationsList = [
-    'Artificial Intelligence',
-    'Machine Learning',
-    'Data Science',
-    'Cybersecurity',
-    'Cloud Computing',
-    'Software Engineering',
-    'VLSI & Embedded Systems',
-    'Power Systems',
-    'Thermal Engineering',
-    'Structural Engineering'
-  ];
 
   const [editFormData, setEditFormData] = useState({
     name: '',
@@ -97,8 +54,8 @@ export default function TeacherProfile() {
     designation: '',
     qualifications: [],
     highestQualification: '',
-    specialization: '',
-    yearsOfExperience: ''
+    yearsOfExperience: '',
+    joinedDate: ''
   });
 
   const fetchDepartments = async () => {
@@ -147,7 +104,7 @@ export default function TeacherProfile() {
 
   // Sync selected department in edit modal if departments finish loading after modal opens
   useEffect(() => {
-    if ((isEditOpen || isEditProfessionalOpen) && teacher && departments.length > 0) {
+    if (isEditOpen && teacher && departments.length > 0) {
       const deptVal = teacher.department || '';
       const deptRefId = teacher.departmentRef ? (teacher.departmentRef._id || teacher.departmentRef) : null;
       const matched = departments.find(d =>
@@ -157,17 +114,13 @@ export default function TeacherProfile() {
         (d.code && d.code.toLowerCase() === String(deptVal).toLowerCase())
       );
       if (matched) {
-        if (isEditOpen && departmentSelect !== matched._id) {
+        if (departmentSelect !== matched._id) {
           setDepartmentSelect(matched._id);
           setEditFormData(prev => ({ ...prev, department: matched._id }));
         }
-        if (isEditProfessionalOpen && profDepartmentSelect !== matched._id) {
-          setProfDepartmentSelect(matched._id);
-          setProfessionalFormData(prev => ({ ...prev, department: matched._id }));
-        }
       }
     }
-  }, [departments, isEditOpen, isEditProfessionalOpen, teacher]);
+  }, [departments, isEditOpen, teacher]);
 
   const resolveTeacherDept = () => {
     if (teacher?.departmentRef && teacher.departmentRef.name) return teacher.departmentRef.name;
@@ -202,147 +155,18 @@ export default function TeacherProfile() {
     }
   };
 
-  // 1. Personal Information Edit handlers
-  const handleOpenEditPersonal = () => {
-    if (!teacher) return;
-    setPersonalFormData({
-      name: teacher.user?.name || teacher.personalInfo?.name || '',
-      email: teacher.personalInfo?.email || '',
-      phone: teacher.personalInfo?.phone || '',
-      address: teacher.personalInfo?.address || ''
-    });
-    setPersonalError('');
-    setIsEditPersonalOpen(true);
-  };
-
-  const handleCancelPersonalEdit = () => {
-    setIsEditPersonalOpen(false);
-    setPersonalError('');
-  };
-
-  const handleSavePersonalEdit = async (e) => {
-    e.preventDefault();
-    setPersonalError('');
-    setPersonalSaving(true);
-
+  const toInputDate = (dateStr) => {
+    if (!dateStr) return '';
     try {
-      if (!personalFormData.name.trim()) throw new Error('Full Name is required.');
-      if (!personalFormData.email.trim()) throw new Error('Email Address is required.');
-      if (!personalFormData.phone.trim()) throw new Error('Phone Number is required.');
-      if (!personalFormData.address.trim()) throw new Error('Address is required.');
-
-      const payload = {
-        department: teacher.department,
-        designation: teacher.designation,
-        personalInfo: {
-          name: personalFormData.name.trim(),
-          email: personalFormData.email.trim().toLowerCase(),
-          phone: personalFormData.phone.trim(),
-          address: personalFormData.address.trim()
-        },
-        professionalInfo: {
-          highestQualification: teacher.professionalInfo?.highestQualification || 'B.Tech',
-          specialization: teacher.professionalInfo?.specialization || 'Software Engineering',
-          yearsOfExperience: teacher.professionalInfo?.yearsOfExperience ?? 0
-        }
-      };
-
-      const res = await adminApi.updateTeacher(teacher._id, payload);
-      if (res.success) {
-        setIsEditPersonalOpen(false);
-        setActionSuccess('Personal Information updated successfully!');
-        setTimeout(() => setActionSuccess(''), 4000);
-        await fetchTeacherData();
-      }
-    } catch (err) {
-      setPersonalError(err.response?.data?.error || err.message || 'Failed to update personal information.');
-    } finally {
-      setPersonalSaving(false);
+      const d = new Date(dateStr);
+      if (isNaN(d.getTime())) return '';
+      return d.toISOString().split('T')[0];
+    } catch (_) {
+      return '';
     }
   };
 
-  // 2. Professional Information Edit handlers
-  const handleOpenEditProfessional = () => {
-    if (!teacher) return;
-
-    const deptVal = teacher.department || '';
-    const desigVal = teacher.designation || '';
-    const qualList = Array.isArray(teacher.professionalInfo?.qualifications) && teacher.professionalInfo.qualifications.length > 0
-      ? teacher.professionalInfo.qualifications
-      : (teacher.professionalInfo?.highestQualification ? teacher.professionalInfo.highestQualification.split(',').map((s) => s.trim()).filter(Boolean) : []);
-    const specVal = teacher.professionalInfo?.specialization || '';
-
-    const deptMatches = departments.some((d) => d.code === deptVal || d.name === deptVal);
-    setProfDepartmentSelect(deptMatches ? deptVal : (deptVal ? 'Other' : ''));
-    setProfDesignationSelect(designationsList.includes(desigVal) ? desigVal : (desigVal ? 'Other' : ''));
-    setProfSpecializationSelect(specializationsList.includes(specVal) ? specVal : (specVal ? 'Other' : ''));
-
-    setProfessionalFormData({
-      department: deptVal,
-      designation: desigVal,
-      qualifications: qualList,
-      highestQualification: qualList.join(', '),
-      specialization: specVal,
-      yearsOfExperience: teacher.professionalInfo?.yearsOfExperience ?? ''
-    });
-
-    setProfessionalError('');
-    setIsEditProfessionalOpen(true);
-  };
-
-  const handleCancelProfessionalEdit = () => {
-    setIsEditProfessionalOpen(false);
-    setProfessionalError('');
-  };
-
-  const handleSaveProfessionalEdit = async (e) => {
-    e.preventDefault();
-    setProfessionalError('');
-    setProfessionalSaving(true);
-
-    try {
-      const finalQuals = professionalFormData.qualifications || [];
-      const finalSpec = professionalFormData.specialization.trim();
-      const exp = professionalFormData.yearsOfExperience;
-
-      if (!finalDept) throw new Error('Department is required.');
-      if (!finalDesig) throw new Error('Designation is required.');
-      if (finalQuals.length === 0) throw new Error('Please select at least one qualification.');
-      if (!finalSpec) throw new Error('Specialization is required.');
-      if (exp === '' || exp === null || exp === undefined) throw new Error('Years of experience is required.');
-
-      const payload = {
-        department: finalDept,
-        designation: finalDesig,
-        personalInfo: {
-          name: teacher.user?.name || teacher.personalInfo?.name || '',
-          email: teacher.personalInfo?.email || '',
-          phone: teacher.personalInfo?.phone || '',
-          address: teacher.personalInfo?.address || ''
-        },
-        professionalInfo: {
-          qualifications: finalQuals,
-          highestQualification: finalQuals.join(', '),
-          specialization: finalSpec,
-          yearsOfExperience: Number(exp)
-        }
-      };
-
-      const res = await adminApi.updateTeacher(teacher._id, payload);
-      if (res.success) {
-        setIsEditProfessionalOpen(false);
-        setActionSuccess('Professional Details updated successfully!');
-        setTimeout(() => setActionSuccess(''), 4000);
-        await fetchTeacherData();
-      }
-    } catch (err) {
-      setProfessionalError(err.response?.data?.error || err.message || 'Failed to update professional details.');
-    } finally {
-      setProfessionalSaving(false);
-    }
-  };
-
-  // 3. Full Teacher Edit Modal
+  // Full Teacher Edit Modal
   const handleOpenEdit = () => {
     if (!teacher) return;
 
@@ -352,7 +176,6 @@ export default function TeacherProfile() {
     const qualList = Array.isArray(teacher.professionalInfo?.qualifications) && teacher.professionalInfo.qualifications.length > 0
       ? teacher.professionalInfo.qualifications
       : (teacher.professionalInfo?.highestQualification ? teacher.professionalInfo.highestQualification.split(',').map((s) => s.trim()).filter(Boolean) : []);
-    const specVal = teacher.professionalInfo?.specialization || '';
 
     const matchedDept = departments.find(d =>
       (d._id && String(d._id) === String(deptVal)) ||
@@ -363,7 +186,8 @@ export default function TeacherProfile() {
     const initialDeptId = matchedDept ? matchedDept._id : (deptVal ? 'Other' : '');
     setDepartmentSelect(initialDeptId);
     setDesignationSelect(designationsList.includes(desigVal) ? desigVal : (desigVal ? 'Other' : ''));
-    setSpecializationSelect(specializationsList.includes(specVal) ? specVal : (specVal ? 'Other' : ''));
+
+    const existingJoined = teacher.joinedDate || teacher.professionalInfo?.joinedDate || teacher.createdAt || teacher.user?.createdAt;
 
     setEditFormData({
       name: teacher.user?.name || teacher.personalInfo?.name || '',
@@ -374,8 +198,8 @@ export default function TeacherProfile() {
       designation: desigVal,
       qualifications: qualList,
       highestQualification: qualList.join(', '),
-      specialization: specVal,
-      yearsOfExperience: teacher.professionalInfo?.yearsOfExperience ?? ''
+      yearsOfExperience: teacher.professionalInfo?.yearsOfExperience ?? '',
+      joinedDate: toInputDate(existingJoined)
     });
 
     setEditError('');
@@ -410,9 +234,10 @@ export default function TeacherProfile() {
         professionalInfo: {
           qualifications: finalQuals,
           highestQualification: finalQuals.join(', '),
-          specialization: editFormData.specialization.trim(),
-          yearsOfExperience: Number(editFormData.yearsOfExperience)
-        }
+          yearsOfExperience: Number(editFormData.yearsOfExperience),
+          joinedDate: editFormData.joinedDate || null
+        },
+        joinedDate: editFormData.joinedDate || null
       };
 
       const res = await adminApi.updateTeacher(teacher._id, payload);
@@ -632,14 +457,7 @@ export default function TeacherProfile() {
             </div>
 
             <div className="flex flex-col sm:flex-row sm:justify-between py-2 border-b border-slate-50 dark:border-slate-800/60 gap-1">
-              <dt className="text-sm font-medium text-slate-500 dark:text-slate-400">Specialization</dt>
-              <dd className="text-sm font-semibold text-slate-900 dark:text-slate-200 sm:text-right">
-                {displayVal(teacher.professionalInfo?.specialization)}
-              </dd>
-            </div>
-
-            <div className="flex flex-col sm:flex-row sm:justify-between py-2 gap-1">
-              <dt className="text-sm font-medium text-slate-500 dark:text-slate-400">Years of Experience</dt>
+              <dt className="text-sm font-medium text-slate-500 dark:text-slate-400">Experience (Years)</dt>
               <dd className="text-sm font-semibold text-slate-900 dark:text-slate-200 sm:text-right">
                 {teacher.professionalInfo?.yearsOfExperience !== undefined &&
                 teacher.professionalInfo?.yearsOfExperience !== null &&
@@ -648,61 +466,92 @@ export default function TeacherProfile() {
                   : '—'}
               </dd>
             </div>
+
+            <div className="flex flex-col sm:flex-row sm:justify-between py-2 gap-1">
+              <dt className="text-sm font-medium text-slate-500 dark:text-slate-400">Joined Date</dt>
+              <dd className="text-sm font-medium text-slate-900 dark:text-slate-200 sm:text-right flex items-center sm:justify-end gap-1">
+                <Calendar className="w-3.5 h-3.5 text-slate-400 dark:text-slate-500" />
+                {formatDate(teacher.joinedDate || teacher.professionalInfo?.joinedDate || teacher.createdAt || teacher.user?.createdAt)}
+              </dd>
+            </div>
           </dl>
         </div>
+      </div>
 
-        {/* Account Information */}
-        <div className="bg-white dark:bg-slate-900 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800 p-6 lg:col-span-2 transition-colors duration-200">
-          <div className="flex items-center gap-2.5 pb-4 mb-5 border-b border-slate-100 dark:border-slate-800">
-            <div className="p-2 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 rounded-lg">
-              <ShieldCheck className="w-5 h-5" />
-            </div>
-            <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100">Account Information</h2>
+      {/* Subjects Assigned Section */}
+      <div className="bg-white dark:bg-slate-900 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800 p-6 mt-6 transition-colors duration-200">
+        <div className="flex items-center gap-2.5 pb-4 mb-5 border-b border-slate-100 dark:border-slate-800">
+          <div className="p-2 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 rounded-lg">
+            <BookOpen className="w-5 h-5" />
           </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6">
-            <div className="p-4 rounded-lg bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800">
-              <span className="block text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">
-                Account Status
-              </span>
-              <span
-                className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${
-                  isActive ? 'bg-green-100 dark:bg-green-950/40 text-green-700 dark:text-green-300' : 'bg-rose-100 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300'
-                }`}
-              >
-                {isActive ? 'Active' : 'Inactive'}
-              </span>
-            </div>
-
-            <div className="p-4 rounded-lg bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800">
-              <span className="block text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">
-                Login ID
-              </span>
-              <span className="text-sm font-mono font-bold text-slate-900 dark:text-slate-100">
-                {displayVal(teacher.user?.userId || teacher.teacherId)}
-              </span>
-            </div>
-
-            <div className="p-4 rounded-lg bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800">
-              <span className="block text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">
-                System Role
-              </span>
-              <span className="text-sm font-semibold text-slate-900 dark:text-slate-100 capitalize">
-                {displayVal(teacher.user?.role || 'teacher')}
-              </span>
-            </div>
-
-            <div className="p-4 rounded-lg bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800">
-              <span className="block text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">
-                Created On
-              </span>
-              <span className="text-sm font-medium text-slate-900 dark:text-slate-100 flex items-center gap-1">
-                <Clock className="w-3.5 h-3.5 text-slate-400 dark:text-slate-500" />
-                {formatDate(teacher.user?.createdAt || teacher.createdAt)}
-              </span>
-            </div>
+          <div>
+            <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100">Subjects Assigned</h2>
           </div>
         </div>
+
+        {teacher.assignedSubjects && teacher.assignedSubjects.length > 0 ? (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="border-b border-slate-200 dark:border-slate-800 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                  <th className="py-3 px-4">Subject Name</th>
+                  <th className="py-3 px-4">Subject Code</th>
+                  <th className="py-3 px-4">Department</th>
+                  <th className="py-3 px-4">Academic Year</th>
+                  <th className="py-3 px-4">Assigned Section(s)</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60 text-sm">
+                {teacher.assignedSubjects.map((sub) => (
+                  <tr
+                    key={sub._id || sub.code}
+                    className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-colors"
+                  >
+                    <td className="py-3.5 px-4 font-semibold text-slate-900 dark:text-slate-100">
+                      {sub.name}
+                    </td>
+                    <td className="py-3.5 px-4 font-mono text-xs font-semibold text-indigo-600 dark:text-indigo-400">
+                      <span className="px-2 py-0.5 rounded bg-indigo-50 dark:bg-indigo-950/50 border border-indigo-200 dark:border-indigo-800/50">
+                        {sub.code}
+                      </span>
+                    </td>
+                    <td className="py-3.5 px-4 text-slate-600 dark:text-slate-300">
+                      {sub.department || '—'}
+                    </td>
+                    <td className="py-3.5 px-4 text-slate-600 dark:text-slate-300">
+                      {sub.academicYear || '—'}
+                    </td>
+                    <td className="py-3.5 px-4">
+                      {Array.isArray(sub.sections) && sub.sections.length > 0 ? (
+                        <div className="flex flex-wrap gap-1.5">
+                          {sub.sections.map((sec, idx) => (
+                            <span
+                              key={idx}
+                              className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700"
+                            >
+                              {sec}
+                            </span>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="text-slate-400 dark:text-slate-500">—</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="py-10 px-4 text-center">
+            <div className="w-12 h-12 bg-slate-100 dark:bg-slate-800 rounded-full flex items-center justify-center mx-auto mb-3 text-slate-400 dark:text-slate-500">
+              <BookOpen className="w-6 h-6" />
+            </div>
+            <p className="text-sm font-medium text-slate-600 dark:text-slate-400">
+              No subjects assigned to this teacher yet.
+            </p>
+          </div>
+        )}
       </div>
 
       {/* Edit Teacher Modal */}
@@ -915,42 +764,7 @@ export default function TeacherProfile() {
 
                   <div>
                     <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
-                      Specialization <span className="text-rose-500">*</span>
-                    </label>
-                    <select
-                      value={specializationSelect}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        setSpecializationSelect(val);
-                        if (val !== 'Other') {
-                          setEditFormData((prev) => ({ ...prev, specialization: val }));
-                        } else {
-                          setEditFormData((prev) => ({ ...prev, specialization: '' }));
-                        }
-                      }}
-                      className="w-full px-3 py-2 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-                    >
-                      <option value="">Select Specialization</option>
-                      {specializationsList.map((s) => (
-                        <option key={s} value={s}>{s}</option>
-                      ))}
-                      <option value="Other">Other (Custom)</option>
-                    </select>
-                    {specializationSelect === 'Other' && (
-                      <input
-                        type="text"
-                        placeholder="Enter specialization"
-                        value={editFormData.specialization}
-                        onChange={(e) => setEditFormData((prev) => ({ ...prev, specialization: e.target.value }))}
-                        required
-                        className="mt-2 w-full px-3 py-2 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-lg text-sm"
-                      />
-                    )}
-                  </div>
-
-                  <div className="sm:col-span-2">
-                    <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
-                      Years of Experience <span className="text-rose-500">*</span>
+                      Experience (Years) <span className="text-rose-500">*</span>
                     </label>
                     <input
                       type="number"
@@ -960,6 +774,19 @@ export default function TeacherProfile() {
                       value={editFormData.yearsOfExperience}
                       onChange={handleEditChange}
                       required
+                      className="w-full px-3 py-2 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
+                      Joined Date
+                    </label>
+                    <input
+                      type="date"
+                      name="joinedDate"
+                      value={editFormData.joinedDate}
+                      onChange={handleEditChange}
                       className="w-full px-3 py-2 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none"
                     />
                   </div>

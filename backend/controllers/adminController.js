@@ -2376,26 +2376,10 @@ exports.createTeacher = async (req, res) => {
     }
     const cleanQualification = cleanQualifications.join(', ');
 
-    const rawSpec = (professionalInfo && professionalInfo.specialization) !== undefined
-      ? professionalInfo.specialization
-      : req.body.specialization;
-    const cleanSpecialization = typeof rawSpec === 'string' && rawSpec.trim() && !rawSpec.trim().toLowerCase().startsWith('select')
-      ? rawSpec.trim()
-      : (teacherProfile.professionalInfo?.specialization || '');
-
-    const rawJoinedDate = (professionalInfo && professionalInfo.joinedDate) !== undefined
-      ? professionalInfo.joinedDate
-      : req.body.joinedDate;
-    let cleanJoinedDate = undefined;
-    if (rawJoinedDate !== undefined) {
-      if (!rawJoinedDate) {
-        cleanJoinedDate = null;
-      } else {
-        const parsedDate = new Date(rawJoinedDate);
-        if (!isNaN(parsedDate.getTime())) {
-          cleanJoinedDate = parsedDate;
-        }
-      }
+    const rawSpec = (professionalInfo && professionalInfo.specialization) || req.body.specialization || '';
+    const cleanSpecialization = typeof rawSpec === 'string' ? rawSpec.trim() : '';
+    if (!cleanSpecialization || cleanSpecialization.toLowerCase().startsWith('select')) {
+      errors.specialization = 'Specialization is required';
     }
 
     const expValue = (professionalInfo && professionalInfo.yearsOfExperience !== undefined) ? professionalInfo.yearsOfExperience : req.body.yearsOfExperience;
@@ -2810,6 +2794,10 @@ exports.updateTeacher = async (req, res) => {
     teacherProfile.professionalInfo.highestQualification = cleanQualification;
     teacherProfile.professionalInfo.specialization = cleanSpecialization;
     teacherProfile.professionalInfo.yearsOfExperience = Number(expValue);
+    if (cleanJoinedDate !== undefined) {
+      teacherProfile.joinedDate = cleanJoinedDate;
+      teacherProfile.professionalInfo.joinedDate = cleanJoinedDate;
+    }
 
     await teacherProfile.save({ session });
 
@@ -2819,6 +2807,8 @@ exports.updateTeacher = async (req, res) => {
       user.name = cleanName;
       user.qualifications = cleanQualifications;
       user.highestQualification = cleanQualification;
+      user.yearsOfExperience = Number(expValue);
+      if (cleanSpecialization) user.specialization = cleanSpecialization;
       await user.save({ session });
     }
 
