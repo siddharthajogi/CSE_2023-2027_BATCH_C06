@@ -9,6 +9,21 @@ const api = axios.create({
   }
 });
 
+// Intercept 401 Unauthorized responses to notify application of expired sessions
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    const url = error.config?.url || '';
+    const isAuthBootstrap = url.includes('/auth/me') || url.includes('/auth/login');
+    if (error.response && error.response.status === 401 && !isAuthBootstrap) {
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('classpulse:auth-expired'));
+      }
+    }
+    return Promise.reject(error);
+  }
+);
+
 export const authApi = {
   login: async (userId, password, role) => {
     const response = await api.post('/auth/login', { userId, password, role });
@@ -43,6 +58,10 @@ export const adminApi = {
   },
   getStudents: async () => {
     const response = await api.get('/admin/students');
+    return response.data;
+  },
+  getNextStudentId: async () => {
+    const response = await api.get('/admin/students/next-id');
     return response.data;
   },
   getStudentById: async (id) => {
@@ -117,8 +136,17 @@ export const adminApi = {
     const response = await api.patch(`/admin/subjects/${id}/status`, { isActive });
     return response.data;
   },
-  deleteSubject: async (id) => {
-    const response = await api.delete(`/admin/subjects/${id}`);
+  checkSubjectAssignments: async (id) => {
+    const response = await api.get(`/admin/subjects/${id}/assignments-check`);
+    return response.data;
+  },
+  deleteSubject: async (id, options = {}) => {
+    const config = {};
+    if (options.cascadeAssignments || options.cascade || options.confirmAssignments) {
+      config.params = { cascade: true };
+      config.data = { cascadeAssignments: true };
+    }
+    const response = await api.delete(`/admin/subjects/${id}`, config);
     return response.data;
   },
   getTeachers: async () => {

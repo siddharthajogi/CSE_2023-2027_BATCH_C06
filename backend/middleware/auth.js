@@ -13,6 +13,7 @@ const getSessionCookieOptions = () => ({
 const requireAuth = async (req, res, next) => {
   try {
     if (!req.session || !req.session.userId) {
+      res.clearCookie('connect.sid', getSessionCookieOptions());
       return res.status(401).json({
         success: false,
         error: 'Authentication required. Please log in.'

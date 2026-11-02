@@ -57,9 +57,10 @@ export default function StudentCreate() {
     const fetchMetadata = async () => {
       fetchDepartments();
       try {
-        const [clsRes, ayRes] = await Promise.all([
+        const [clsRes, ayRes, nextIdRes] = await Promise.all([
           adminApi.getClasses(),
-          adminApi.getAcademicYears()
+          adminApi.getAcademicYears(),
+          adminApi.getNextStudentId().catch(() => null)
         ]);
         if (clsRes && clsRes.success) setConfiguredClasses(clsRes.classes || []);
         if (ayRes && ayRes.success) {
@@ -68,6 +69,9 @@ export default function StudentCreate() {
           if (activeYear && !formData.academicYear) {
             setFormData(prev => ({ ...prev, academicYear: activeYear.year }));
           }
+        }
+        if (nextIdRes && nextIdRes.success && nextIdRes.nextStudentId) {
+          setFormData(prev => prev.studentId ? prev : ({ ...prev, studentId: nextIdRes.nextStudentId }));
         }
       } catch (err) {
         console.error('Failed to load classes and academic years in StudentCreate:', err);
@@ -202,6 +206,11 @@ export default function StudentCreate() {
     setErrors({});
     setError('');
     setSuccess('');
+    adminApi.getNextStudentId().then(res => {
+      if (res?.success && res.nextStudentId) {
+        setFormData(prev => ({ ...prev, studentId: res.nextStudentId }));
+      }
+    }).catch(() => {});
   };
 
   const handleSubmit = async (e) => {
@@ -595,7 +604,7 @@ export default function StudentCreate() {
                 className={`w-full px-3 py-2 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 border rounded-lg focus:ring-2 focus:ring-indigo-500 ${
                   errors.studentId ? 'border-rose-500 ring-1 ring-rose-500' : 'border-slate-300 dark:border-slate-700'
                 }`}
-                placeholder="e.g. s2026001"
+                placeholder="Auto-generated ID (or enter custom ID)"
               />
               {errors.studentId && (
                 <p className="text-xs text-rose-600 dark:text-rose-400 mt-1 font-medium">{errors.studentId}</p>

@@ -1,27 +1,27 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { NavLink, Outlet, useNavigate, useLocation, Link } from 'react-router-dom';
-import { 
-  LayoutDashboard, 
-  BookOpen, 
-  Layers, 
-  Users, 
-  Activity, 
-  Target, 
-  Sparkles, 
-  CheckSquare, 
-  FileText, 
-  CalendarCheck, 
-  BookOpenCheck, 
-  TrendingUp, 
-  User, 
-  LogOut, 
-  Sun, 
-  Moon, 
-  Bell, 
-  Check, 
-  ChevronDown, 
-  Menu, 
-  X 
+import {
+  LayoutDashboard,
+  BookOpen,
+  Layers,
+  Users,
+  Activity,
+  Target,
+  Sparkles,
+  CheckSquare,
+  FileText,
+  CalendarCheck,
+  BookOpenCheck,
+  TrendingUp,
+  User,
+  LogOut,
+  Sun,
+  Moon,
+  Bell,
+  Check,
+  ChevronDown,
+  Menu,
+  X
 } from 'lucide-react';
 import ClassPulseLogo from './ClassPulseLogo';
 import { useTheme } from '../context/ThemeContext';
@@ -105,7 +105,7 @@ export default function TeacherLayout({ onLogout, currentUser }) {
   }, [isThemeOpen]);
 
   // Exact 13 items in the required order:
-  // 1. Dashboard
+  // 1. Home
   // 2. My Subjects
   // 3. My Classes
   // 4. Students
@@ -119,7 +119,7 @@ export default function TeacherLayout({ onLogout, currentUser }) {
   // 12. Learning Improvement
   // 13. My Profile
   const menuItems = [
-    { name: 'Dashboard', icon: LayoutDashboard, path: '/teacher/dashboard' },
+    { name: 'Home', icon: LayoutDashboard, path: '/teacher/dashboard' },
     { name: 'My Subjects', icon: BookOpen, path: '/teacher/subjects' },
     { name: 'My Classes', icon: Layers, path: '/teacher/classes' },
     { name: 'Students', icon: Users, path: '/teacher/students' },
@@ -145,21 +145,19 @@ export default function TeacherLayout({ onLogout, currentUser }) {
             if (closeMobile) setMobileMenuOpen(false);
           }}
           className={({ isActive }) =>
-            `group flex items-center justify-between px-3 py-2 text-xs sm:text-sm font-medium rounded-xl transition-all duration-150 ${
-              isActive
-                ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 font-semibold border-l-4 border-emerald-600 dark:border-emerald-500 shadow-2xs'
-                : 'text-slate-600 dark:text-slate-400 hover:bg-emerald-50/50 dark:hover:bg-emerald-950/30 hover:text-emerald-700 dark:hover:text-emerald-300'
+            `group flex items-center justify-between px-3 py-2 text-xs sm:text-sm font-medium rounded-xl transition-all duration-150 ${isActive
+              ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 font-semibold border-l-4 border-emerald-600 dark:border-emerald-500 shadow-2xs'
+              : 'text-slate-600 dark:text-slate-400 hover:bg-emerald-50/50 dark:hover:bg-emerald-950/30 hover:text-emerald-700 dark:hover:text-emerald-300'
             }`
           }
         >
           {({ isActive }) => (
             <div className="flex items-center gap-3">
               <item.icon
-                className={`w-4 h-4 sm:w-4.5 sm:h-4.5 shrink-0 transition-colors ${
-                  isActive
+                className={`w-4 h-4 sm:w-4.5 sm:h-4.5 shrink-0 transition-colors ${isActive
                     ? 'text-emerald-600 dark:text-emerald-400'
                     : 'text-slate-400 group-hover:text-emerald-600 dark:group-hover:text-emerald-400'
-                }`}
+                  }`}
               />
               <span>{item.name}</span>
             </div>
@@ -275,11 +273,10 @@ export default function TeacherLayout({ onLogout, currentUser }) {
             {/* 2. Top-Header Notifications Button (Emerald themed) */}
             <Link
               to="/teacher/notifications"
-              className={`relative inline-flex items-center gap-2 px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl text-xs sm:text-sm font-medium transition-colors border cursor-pointer ${
-                location.pathname === '/teacher/notifications'
+              className={`relative inline-flex items-center gap-2 px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl text-xs sm:text-sm font-medium transition-colors border cursor-pointer ${location.pathname === '/teacher/notifications'
                   ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700 shadow-2xs font-semibold'
                   : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 hover:bg-emerald-50/50 dark:hover:bg-emerald-950/30 hover:border-emerald-300 dark:hover:border-emerald-700 hover:text-emerald-700 dark:hover:text-emerald-300'
-              }`}
+                }`}
               title="Teacher Notifications"
               aria-label="Teacher Notifications"
             >
@@ -292,11 +289,10 @@ export default function TeacherLayout({ onLogout, currentUser }) {
               <button
                 type="button"
                 onClick={() => setIsThemeOpen((prev) => !prev)}
-                className={`inline-flex items-center gap-2 px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl text-xs sm:text-sm font-medium transition-colors border cursor-pointer ${
-                  isThemeOpen
+                className={`inline-flex items-center gap-2 px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl text-xs sm:text-sm font-medium transition-colors border cursor-pointer ${isThemeOpen
                     ? 'bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100 border-emerald-400 dark:border-emerald-600 shadow-2xs'
                     : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100'
-                }`}
+                  }`}
                 title="Select Theme"
                 aria-label="Select Theme"
                 aria-haspopup="true"
@@ -309,9 +305,8 @@ export default function TeacherLayout({ onLogout, currentUser }) {
                 )}
                 <span>Theme</span>
                 <ChevronDown
-                  className={`w-3.5 h-3.5 text-slate-400 transition-transform duration-200 ${
-                    isThemeOpen ? 'rotate-180' : ''
-                  }`}
+                  className={`w-3.5 h-3.5 text-slate-400 transition-transform duration-200 ${isThemeOpen ? 'rotate-180' : ''
+                    }`}
                 />
               </button>
 
@@ -333,11 +328,10 @@ export default function TeacherLayout({ onLogout, currentUser }) {
                       setTheme('light');
                       setIsThemeOpen(false);
                     }}
-                    className={`w-full flex items-center justify-between px-3 py-2 text-xs sm:text-sm rounded-xl transition-colors cursor-pointer ${
-                      theme === 'light'
+                    className={`w-full flex items-center justify-between px-3 py-2 text-xs sm:text-sm rounded-xl transition-colors cursor-pointer ${theme === 'light'
                         ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 font-semibold border-l-[3px] border-emerald-600 dark:border-emerald-400 pl-2.5'
                         : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100'
-                    }`}
+                      }`}
                     role="menuitem"
                   >
                     <div className="flex items-center gap-2.5">
@@ -356,11 +350,10 @@ export default function TeacherLayout({ onLogout, currentUser }) {
                       setTheme('dark');
                       setIsThemeOpen(false);
                     }}
-                    className={`w-full flex items-center justify-between px-3 py-2 text-xs sm:text-sm rounded-xl transition-colors cursor-pointer ${
-                      theme === 'dark'
+                    className={`w-full flex items-center justify-between px-3 py-2 text-xs sm:text-sm rounded-xl transition-colors cursor-pointer ${theme === 'dark'
                         ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 font-semibold border-l-[3px] border-emerald-600 dark:border-emerald-400 pl-2.5'
                         : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100'
-                    }`}
+                      }`}
                     role="menuitem"
                   >
                     <div className="flex items-center gap-2.5">

@@ -1,23 +1,23 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { NavLink, Outlet, useNavigate, useLocation, Link } from 'react-router-dom';
-import { 
-  LayoutDashboard, 
-  BookOpen, 
-  FileText, 
-  CalendarCheck, 
-  BookOpenCheck, 
-  TrendingUp, 
-  Sparkles, 
-  HeartHandshake, 
-  Bell, 
-  User, 
-  LogOut, 
-  Sun, 
-  Moon, 
-  Check, 
-  ChevronDown, 
-  Menu, 
-  X 
+import {
+  LayoutDashboard,
+  BookOpen,
+  FileText,
+  CalendarCheck,
+  BookOpenCheck,
+  TrendingUp,
+  Sparkles,
+  HeartHandshake,
+  Bell,
+  User,
+  LogOut,
+  Sun,
+  Moon,
+  Check,
+  ChevronDown,
+  Menu,
+  X
 } from 'lucide-react';
 import ClassPulseLogo from './ClassPulseLogo';
 import { useTheme } from '../context/ThemeContext';
@@ -115,7 +115,7 @@ export default function StudentLayout({ onLogout, currentUser }) {
   }, [isThemeOpen]);
 
   // 10 items in exact required order:
-  // 1. Dashboard
+  // 1. Home
   // 2. My Subjects
   // 3. My Academic Records
   // 4. My Attendance
@@ -126,7 +126,7 @@ export default function StudentLayout({ onLogout, currentUser }) {
   // 9. Notifications
   // 10. My Profile
   const menuItems = [
-    { name: 'Dashboard', icon: LayoutDashboard, path: '/student/dashboard' },
+    { name: 'Home', icon: LayoutDashboard, path: '/student/dashboard' },
     { name: 'My Subjects', icon: BookOpen, path: '/student/subjects' },
     { name: 'My Academic Records', icon: FileText, path: '/student/academic-records' },
     { name: 'My Attendance', icon: CalendarCheck, path: '/student/attendance' },
@@ -149,10 +149,9 @@ export default function StudentLayout({ onLogout, currentUser }) {
             if (closeMobile) setMobileMenuOpen(false);
           }}
           className={({ isActive }) =>
-            `group flex items-center justify-between px-3 py-2 text-xs sm:text-sm font-medium rounded-xl transition-all duration-150 ${
-              isActive
-                ? 'bg-blue-50 dark:bg-blue-950/60 text-blue-950 dark:text-blue-300 font-semibold border-l-4 border-[#1E3A8A] dark:border-blue-500 shadow-2xs'
-                : 'text-slate-600 dark:text-slate-400 hover:bg-blue-50/50 dark:hover:bg-blue-950/30 hover:text-[#1E3A8A] dark:hover:text-blue-300'
+            `group flex items-center justify-between px-3 py-2 text-xs sm:text-sm font-medium rounded-xl transition-all duration-150 ${isActive
+              ? 'bg-blue-50 dark:bg-blue-950/60 text-blue-950 dark:text-blue-300 font-semibold border-l-4 border-[#1E3A8A] dark:border-blue-500 shadow-2xs'
+              : 'text-slate-600 dark:text-slate-400 hover:bg-blue-50/50 dark:hover:bg-blue-950/30 hover:text-[#1E3A8A] dark:hover:text-blue-300'
             }`
           }
         >
@@ -160,11 +159,10 @@ export default function StudentLayout({ onLogout, currentUser }) {
             <>
               <div className="flex items-center gap-3">
                 <item.icon
-                  className={`w-4 h-4 sm:w-4.5 sm:h-4.5 shrink-0 transition-colors ${
-                    isActive
+                  className={`w-4 h-4 sm:w-4.5 sm:h-4.5 shrink-0 transition-colors ${isActive
                       ? 'text-[#1E3A8A] dark:text-blue-400'
                       : 'text-slate-400 group-hover:text-[#1E3A8A] dark:group-hover:text-blue-400'
-                  }`}
+                    }`}
                 />
                 <span>{item.name}</span>
               </div>
@@ -286,11 +284,10 @@ export default function StudentLayout({ onLogout, currentUser }) {
             {/* 2. Top-Header Notifications Button */}
             <Link
               to="/student/notifications"
-              className={`relative inline-flex items-center gap-2 px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl text-xs sm:text-sm font-medium transition-colors border cursor-pointer ${
-                location.pathname === '/student/notifications'
+              className={`relative inline-flex items-center gap-2 px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl text-xs sm:text-sm font-medium transition-colors border cursor-pointer ${location.pathname === '/student/notifications'
                   ? 'bg-blue-50 dark:bg-blue-950/60 text-[#1E3A8A] dark:text-blue-300 border-blue-300 dark:border-blue-700 shadow-2xs font-semibold'
                   : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 hover:bg-blue-50/50 dark:hover:bg-blue-950/30 hover:border-blue-300 dark:hover:border-blue-700 hover:text-[#1E3A8A] dark:hover:text-blue-300'
-              }`}
+                }`}
               title="Student Notifications"
               aria-label="Student Notifications"
             >
@@ -306,11 +303,10 @@ export default function StudentLayout({ onLogout, currentUser }) {
               <button
                 type="button"
                 onClick={() => setIsThemeOpen((prev) => !prev)}
-                className={`inline-flex items-center gap-2 px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl text-xs sm:text-sm font-medium transition-colors border cursor-pointer ${
-                  isThemeOpen
+                className={`inline-flex items-center gap-2 px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl text-xs sm:text-sm font-medium transition-colors border cursor-pointer ${isThemeOpen
                     ? 'bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100 border-blue-400 dark:border-blue-600 shadow-2xs'
                     : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100'
-                }`}
+                  }`}
                 title="Select Theme"
                 aria-label="Select Theme"
                 aria-haspopup="true"
@@ -323,9 +319,8 @@ export default function StudentLayout({ onLogout, currentUser }) {
                 )}
                 <span>Theme</span>
                 <ChevronDown
-                  className={`w-3.5 h-3.5 text-slate-400 transition-transform duration-200 ${
-                    isThemeOpen ? 'rotate-180' : ''
-                  }`}
+                  className={`w-3.5 h-3.5 text-slate-400 transition-transform duration-200 ${isThemeOpen ? 'rotate-180' : ''
+                    }`}
                 />
               </button>
 
@@ -347,11 +342,10 @@ export default function StudentLayout({ onLogout, currentUser }) {
                       setTheme('light');
                       setIsThemeOpen(false);
                     }}
-                    className={`w-full flex items-center justify-between px-3 py-2 text-xs sm:text-sm rounded-xl transition-colors cursor-pointer ${
-                      theme === 'light'
+                    className={`w-full flex items-center justify-between px-3 py-2 text-xs sm:text-sm rounded-xl transition-colors cursor-pointer ${theme === 'light'
                         ? 'bg-blue-50 dark:bg-blue-950/60 text-blue-900 dark:text-blue-300 font-semibold border-l-[3px] border-[#1E3A8A] dark:border-blue-400 pl-2.5'
                         : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100'
-                    }`}
+                      }`}
                     role="menuitem"
                   >
                     <div className="flex items-center gap-2.5">
@@ -370,11 +364,10 @@ export default function StudentLayout({ onLogout, currentUser }) {
                       setTheme('dark');
                       setIsThemeOpen(false);
                     }}
-                    className={`w-full flex items-center justify-between px-3 py-2 text-xs sm:text-sm rounded-xl transition-colors cursor-pointer ${
-                      theme === 'dark'
+                    className={`w-full flex items-center justify-between px-3 py-2 text-xs sm:text-sm rounded-xl transition-colors cursor-pointer ${theme === 'dark'
                         ? 'bg-blue-50 dark:bg-blue-950/60 text-blue-900 dark:text-blue-300 font-semibold border-l-[3px] border-[#1E3A8A] dark:border-blue-400 pl-2.5'
                         : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100'
-                    }`}
+                      }`}
                     role="menuitem"
                   >
                     <div className="flex items-center gap-2.5">

@@ -3,7 +3,9 @@ const StudentProfile = require('../models/StudentProfile');
 const TeacherProfile = require('../models/TeacherProfile');
 const Class = require('../models/Class');
 const Subject = require('../models/Subject');
+const SubjectConcept = require('../models/SubjectConcept');
 const TeachingAssignment = require('../models/TeachingAssignment');
+const Counter = require('../models/Counter');
 const AuditLog = require('../models/AuditLog');
 const Institution = require('../models/Institution');
 const AcademicYear = require('../models/AcademicYear');
@@ -218,19 +220,19 @@ exports.getDashboardStats = async (req, res) => {
     const activeYear = await AcademicYear.findOne({ isActive: true, institution: institutionId });
     let activeTerm = null;
     if (activeYear && activeYear.terms) {
-       activeTerm = activeYear.terms.find(t => t.isActive);
+      activeTerm = activeYear.terms.find(t => t.isActive);
     }
 
     res.status(200).json({
       success: true,
-      stats: { 
-        totalStudents, 
-        totalTeachers, 
-        activeAccounts, 
+      stats: {
+        totalStudents,
+        totalTeachers,
+        activeAccounts,
         activeStudents,
         activeTeachers,
         activeAdmins,
-        inactiveAccounts, 
+        inactiveAccounts,
         totalClasses,
         activeClasses,
         totalSubjects,
@@ -290,11 +292,11 @@ const ensureDepartmentsForInstitution = async (institutionId) => {
           }
         }
       }
-    } catch (_) {}
+    } catch (_) { }
 
     try {
       await Department.insertMany(toInsert, { ordered: false });
-    } catch (_) {}
+    } catch (_) { }
 
     docs = await Department.find({ institution: institutionId }).sort({ name: 1 });
   }
@@ -371,7 +373,7 @@ exports.getAdminProfile = async (req, res) => {
           }
         });
       }
-    } catch (_) {}
+    } catch (_) { }
 
     const departmentsList = [...DEPARTMENTS.map(d => d.name)];
     for (const d of dbDepts) {
@@ -595,7 +597,7 @@ exports.updateAdminProfile = async (req, res) => {
           details: { name: user.name, email: user.email, designation: user.designation }
         });
       }
-    } catch (_) {}
+    } catch (_) { }
 
     return res.status(200).json({
       success: true,
@@ -628,8 +630,8 @@ exports.updateAdminProfile = async (req, res) => {
 exports.getInstitutionSetupStatus = async (req, res) => {
   try {
     const institution = await Institution.findById(req.currentUser.institution._id);
-    res.status(200).json({ 
-      success: true, 
+    res.status(200).json({
+      success: true,
       isSetupComplete: institution ? institution.isSetupComplete : false,
       institution
     });
@@ -641,7 +643,7 @@ exports.getInstitutionSetupStatus = async (req, res) => {
 exports.setupInstitution = async (req, res) => {
   try {
     const { name, code, description, type, website, address, city, state, country, email, phone, timezone, academicYear, logoUrl } = req.body;
-    
+
     let institution = await Institution.findById(req.currentUser.institution._id);
     if (institution && institution.isSetupComplete) {
       return res.status(400).json({ success: false, error: 'Institution is already set up.' });
@@ -668,24 +670,24 @@ exports.setupInstitution = async (req, res) => {
       institution.logoUrl = String(logoUrl).trim();
     }
     institution.lastUpdatedBy = req.currentUser._id;
-    
+
     await institution.save();
 
     // Create Initial Academic Year if provided
     if (academicYear) {
-       const existingYear = await AcademicYear.findOne({ year: academicYear.year, institution: institution._id });
-       if (!existingYear) {
-         const newYear = new AcademicYear({
-           institution: institution._id,
-           year: academicYear.year,
-           startDate: academicYear.startDate,
-           endDate: academicYear.endDate,
-           structureType: academicYear.structureType,
-           terms: academicYear.terms || [],
-           isActive: true
-         });
-         await newYear.save();
-       }
+      const existingYear = await AcademicYear.findOne({ year: academicYear.year, institution: institution._id });
+      if (!existingYear) {
+        const newYear = new AcademicYear({
+          institution: institution._id,
+          year: academicYear.year,
+          startDate: academicYear.startDate,
+          endDate: academicYear.endDate,
+          structureType: academicYear.structureType,
+          terms: academicYear.terms || [],
+          isActive: true
+        });
+        await newYear.save();
+      }
     }
 
     await logAudit(req.currentUser.institution._id, req.currentUser._id, 'SETUP_INSTITUTION', institution._id, 'Institution');
@@ -1231,7 +1233,7 @@ exports.getAcademicYears = async (req, res) => {
 exports.createAcademicYear = async (req, res) => {
   try {
     const { year, startDate, endDate, structureType, terms, makeActive } = req.body;
-    
+
     if (makeActive) {
       await AcademicYear.updateMany({ institution: req.currentUser.institution._id }, { isActive: false });
     }
@@ -1241,7 +1243,7 @@ exports.createAcademicYear = async (req, res) => {
       year, startDate, endDate, structureType, terms, isActive: makeActive || false
     });
     await newYear.save();
-    
+
     await logAudit(req.currentUser.institution._id, req.currentUser._id, 'CREATE_ACADEMIC_YEAR', newYear._id, 'AcademicYear', { year });
     res.status(201).json({ success: true, message: 'Academic year created', academicYear: newYear });
   } catch (error) {
@@ -1257,7 +1259,7 @@ exports.activateAcademicYear = async (req, res) => {
     await AcademicYear.updateMany({ institution: req.currentUser.institution._id }, { isActive: false });
     const year = await AcademicYear.findOne({ _id: id, institution: req.currentUser.institution._id });
     if (!year) return res.status(404).json({ success: false, error: 'Academic year not found' });
-    
+
     year.isActive = true;
     if (termId && year.terms) {
       year.terms.forEach(t => t.isActive = (t._id.toString() === termId));
@@ -1277,7 +1279,7 @@ exports.getEnrollmentAnalytics = async (req, res) => {
     // Group students by creation month
     const students = await User.find({ role: 'student', institution: req.currentUser.institution._id }).select('createdAt');
     const enrollmentMap = {};
-    
+
     students.forEach(s => {
       const date = new Date(s.createdAt);
       const monthYear = `${date.toLocaleString('default', { month: 'short' })} ${date.getFullYear()}`;
@@ -1299,10 +1301,10 @@ exports.getPerformanceAnalytics = async (req, res) => {
     const records = await AcademicRecord.find({ institution: institutionId })
       .populate('academicYear', 'year isActive startDate endDate')
       .populate('student', '_id isActive');
-    
+
     // De-duplicate duplicate records for same student + subject + academicYear + term
     // Keep the latest record by updatedAt / createdAt
-    const sortedRecords = [...records].sort((a, b) => 
+    const sortedRecords = [...records].sort((a, b) =>
       new Date(b.updatedAt || b.createdAt) - new Date(a.updatedAt || a.createdAt)
     );
 
@@ -1410,10 +1412,10 @@ exports.getPerformanceAnalytics = async (req, res) => {
       ? Math.round(overallAttSum / uniqueAttendanceRecords.length)
       : null;
 
-    res.status(200).json({ 
-      success: true, 
-      data: { 
-        performance, 
+    res.status(200).json({
+      success: true,
+      data: {
+        performance,
         attendance,
         latestScore,
         latestAttendance,
@@ -1421,7 +1423,7 @@ exports.getPerformanceAnalytics = async (req, res) => {
         overallAverageAttendance,
         hasPerformanceData: performance.length > 0,
         hasAttendanceData: attendance.length > 0
-      } 
+      }
     });
   } catch (error) {
     console.error('getPerformanceAnalytics error:', error);
@@ -1548,15 +1550,15 @@ exports.getRiskOverview = async (req, res) => {
   try {
     const risks = await RiskPrediction.find({ institution: req.currentUser.institution._id });
     let low = 0, medium = 0, high = 0;
-    
+
     risks.forEach(r => {
       if (r.riskLevel === 'low') low++;
       if (r.riskLevel === 'medium') medium++;
       if (r.riskLevel === 'high') high++;
     });
 
-    res.status(200).json({ 
-      success: true, 
+    res.status(200).json({
+      success: true,
       data: [
         { name: 'Low Risk', value: low, color: '#10b981' },
         { name: 'Medium Risk', value: medium, color: '#f59e0b' },
@@ -1670,6 +1672,110 @@ const findConfiguredStudentGroup = async ({
   return matched || null;
 };
 
+// Concurrency-safe atomic student ID generator
+// Generates globally unique, sequential student IDs following format STU-YYYY-XXXX (e.g., STU-2026-0015)
+const generateUniqueStudentId = async () => {
+  const currentYear = new Date().getFullYear();
+  const counterKey = `studentId_${currentYear}`;
+
+  let counterDoc = await Counter.findById(counterKey);
+  if (!counterDoc) {
+    let maxSeq = 0;
+    const allStudents = await StudentProfile.find({}, { studentId: 1 }).lean();
+    allStudents.forEach(s => {
+      if (!s.studentId) return;
+      const yearPattern = new RegExp(`^stu[-_]?${currentYear}[-_]?(\\d+)`, 'i');
+      const yearMatch = s.studentId.match(yearPattern);
+      if (yearMatch && yearMatch[1]) {
+        const num = parseInt(yearMatch[1], 10);
+        if (num > maxSeq) maxSeq = num;
+      } else {
+        const numMatch = s.studentId.match(/(\d+)/);
+        if (numMatch && numMatch[1]) {
+          const num = parseInt(numMatch[1], 10);
+          if (num > maxSeq && num < 100000) maxSeq = num;
+        }
+      }
+    });
+
+    try {
+      await Counter.findOneAndUpdate(
+        { _id: counterKey },
+        { $setOnInsert: { seq: maxSeq } },
+        { upsert: true }
+      );
+    } catch (_) { }
+  }
+
+  let attempts = 0;
+  while (attempts < 50) {
+    attempts++;
+    const updated = await Counter.findOneAndUpdate(
+      { _id: counterKey },
+      { $inc: { seq: 1 } },
+      { returnDocument: 'after', upsert: true }
+    );
+
+    const paddedSeq = String(updated.seq).padStart(4, '0');
+    const candidateId = `STU-${currentYear}-${paddedSeq}`;
+
+    const existsInProfile = await StudentProfile.exists({
+      studentId: { $regex: new RegExp(`^${escapeRegex(candidateId)}$`, 'i') }
+    });
+    const existsInUser = await User.exists({
+      userId: candidateId.toLowerCase()
+    });
+
+    if (!existsInProfile && !existsInUser) {
+      return candidateId;
+    }
+  }
+
+  return `STU-${currentYear}-${Date.now().toString().slice(-4)}`;
+};
+
+const peekNextStudentId = async () => {
+  const currentYear = new Date().getFullYear();
+  const counterKey = `studentId_${currentYear}`;
+
+  let counterDoc = await Counter.findById(counterKey);
+  let currentSeq = 0;
+  if (!counterDoc) {
+    let maxSeq = 0;
+    const allStudents = await StudentProfile.find({}, { studentId: 1 }).lean();
+    allStudents.forEach(s => {
+      if (!s.studentId) return;
+      const yearPattern = new RegExp(`^stu[-_]?${currentYear}[-_]?(\\d+)`, 'i');
+      const yearMatch = s.studentId.match(yearPattern);
+      if (yearMatch && yearMatch[1]) {
+        const num = parseInt(yearMatch[1], 10);
+        if (num > maxSeq) maxSeq = num;
+      } else {
+        const numMatch = s.studentId.match(/(\d+)/);
+        if (numMatch && numMatch[1]) {
+          const num = parseInt(numMatch[1], 10);
+          if (num > maxSeq && num < 100000) maxSeq = num;
+        }
+      }
+    });
+    currentSeq = maxSeq;
+  } else {
+    currentSeq = counterDoc.seq;
+  }
+
+  const nextSeq = currentSeq + 1;
+  return `STU-${currentYear}-${String(nextSeq).padStart(4, '0')}`;
+};
+
+exports.getNextStudentId = async (req, res) => {
+  try {
+    const nextStudentId = await peekNextStudentId();
+    res.status(200).json({ success: true, nextStudentId });
+  } catch (error) {
+    res.status(500).json({ success: false, error: 'Failed to retrieve next student ID' });
+  }
+};
+
 exports.createStudent = async (req, res) => {
   const session = await mongoose.startSession();
   session.startTransaction();
@@ -1678,9 +1784,9 @@ exports.createStudent = async (req, res) => {
 
     const errors = {};
 
-    const cleanStudentId = studentId && typeof studentId === 'string' ? studentId.trim().toLowerCase() : '';
-    if (!cleanStudentId) {
-      errors.studentId = 'Student Login ID is required';
+    let cleanStudentId = studentId && typeof studentId === 'string' ? studentId.trim() : '';
+    if (!cleanStudentId || cleanStudentId.toLowerCase() === 'auto') {
+      cleanStudentId = await generateUniqueStudentId();
     }
 
     if (!password) {
@@ -1905,7 +2011,7 @@ exports.getStudents = async (req, res) => {
   try {
     const students = await StudentProfile.find({ institution: req.currentUser.institution._id })
       .populate('user', 'userId name role isActive createdAt mustChangePassword')
-      .populate('classRef', 'name section course department academicYear semester isActive')
+      .populate('classRef', 'name section course department academicYear semester yearOfStudy isActive')
       .populate('departmentRef', 'name code');
     res.status(200).json({ success: true, students });
   } catch (error) {
@@ -1925,7 +2031,7 @@ exports.getStudentById = async (req, res) => {
       institution: req.currentUser.institution._id
     })
       .populate('user', 'userId name role isActive createdAt mustChangePassword')
-      .populate('classRef', 'name section course department academicYear semester isActive')
+      .populate('classRef', 'name section course department academicYear semester yearOfStudy isActive')
       .populate('departmentRef', 'name code');
 
     if (!student) {
@@ -1945,7 +2051,7 @@ exports.updateStudent = async (req, res) => {
   try {
     const { id } = req.params;
     const { studentId, course, department, academicYear, semester, section, batch, personalInfo, learningProfile } = req.body;
-    
+
     const studentProfile = await StudentProfile.findOne({ _id: id, institution: req.currentUser.institution._id }).session(session);
     if (!studentProfile) {
       await session.abortTransaction();
@@ -1953,20 +2059,30 @@ exports.updateStudent = async (req, res) => {
       return res.status(404).json({ success: false, error: 'Student not found' });
     }
 
-    if (studentId && studentId.toLowerCase() !== studentProfile.studentId) {
-       const existingProfile = await StudentProfile.findOne({ studentId: studentId.toLowerCase(), institution: req.currentUser.institution._id }).session(session);
-       if (existingProfile) {
-          await session.abortTransaction();
-          session.endSession();
-          return res.status(400).json({ success: false, error: 'Student ID already exists in this institution' });
-       }
-       const existingUser = await User.findOne({ userId: studentId.toLowerCase(), institution: req.currentUser.institution._id }).session(session);
-       if (existingUser) {
-          await session.abortTransaction();
-          session.endSession();
-          return res.status(400).json({ success: false, error: 'User ID already exists in this institution' });
-       }
-       studentProfile.studentId = studentId.toLowerCase();
+    // Student ID editing: validate uniqueness across StudentProfile and User if modified
+    const cleanStudentId = studentId && typeof studentId === 'string' ? studentId.trim() : '';
+    if (cleanStudentId && cleanStudentId !== studentProfile.studentId) {
+      const duplicateStudent = await StudentProfile.findOne({
+        _id: { $ne: studentProfile._id },
+        studentId: new RegExp(`^${escapeRegex(cleanStudentId)}$`, 'i')
+      }).session(session);
+
+      const duplicateUser = await User.findOne({
+        _id: { $ne: studentProfile.user },
+        userId: new RegExp(`^${escapeRegex(cleanStudentId)}$`, 'i')
+      }).session(session);
+
+      if (duplicateStudent || duplicateUser) {
+        await session.abortTransaction();
+        session.endSession();
+        return res.status(400).json({
+          success: false,
+          error: `Student ID "${cleanStudentId}" already exists. Please choose a unique Student ID.`,
+          errors: { studentId: 'Student ID already exists' }
+        });
+      }
+
+      studentProfile.studentId = cleanStudentId;
     }
 
     // Resolve and validate department
@@ -2118,7 +2234,7 @@ exports.updateStudent = async (req, res) => {
     }
 
     if (batch !== undefined) studentProfile.batch = batch;
-    
+
     if (personalInfo) {
       if (!studentProfile.personalInfo) studentProfile.personalInfo = {};
       if (personalInfo.email !== undefined) studentProfile.personalInfo.email = personalInfo.email;
@@ -2136,10 +2252,10 @@ exports.updateStudent = async (req, res) => {
     const user = await User.findById(studentProfile.user).session(session);
     if (user) {
       if (personalInfo && personalInfo.name !== undefined) {
-         user.name = personalInfo.name;
+        user.name = personalInfo.name;
       }
-      if (studentId && studentId.toLowerCase() !== user.userId) {
-         user.userId = studentId.toLowerCase();
+      if (cleanStudentId && cleanStudentId.toLowerCase() !== user.userId) {
+        user.userId = cleanStudentId.toLowerCase();
       }
       await user.save({ session });
     }
@@ -2166,7 +2282,7 @@ exports.updateStudent = async (req, res) => {
 
     const updatedStudent = await StudentProfile.findById(id)
       .populate('user', 'name isActive createdAt mustChangePassword')
-      .populate('classRef', 'name section course department academicYear semester isActive');
+      .populate('classRef', 'name section course department academicYear semester yearOfStudy isActive');
     res.status(200).json({ success: true, message: 'Student updated successfully', student: updatedStudent });
   } catch (error) {
     await session.abortTransaction();
@@ -2386,11 +2502,48 @@ exports.createTeacher = async (req, res) => {
 
 exports.getTeachers = async (req, res) => {
   try {
-    const teachers = await TeacherProfile.find({ institution: req.currentUser.institution._id })
+    const institutionId = req.currentUser.institution._id;
+    const teachers = await TeacherProfile.find({ institution: institutionId })
       .populate('user', 'userId name role isActive createdAt mustChangePassword')
       .populate('departmentRef', 'name code');
-    res.status(200).json({ success: true, teachers: teachers.map(ensureTeacherQualifications) });
+
+    // Fetch active teaching assignments for teachers in this institution
+    const assignments = await TeachingAssignment.find({
+      institution: institutionId,
+      teacher: { $in: teachers.map(t => t._id) },
+      isActive: true
+    }).populate('subject', 'name code department credits subjectType');
+
+    // Map teacher._id to array of assigned subjects
+    const teacherSubjectsMap = {};
+    assignments.forEach(asg => {
+      if (asg.teacher && asg.subject) {
+        const tId = String(asg.teacher._id || asg.teacher);
+        if (!teacherSubjectsMap[tId]) {
+          teacherSubjectsMap[tId] = [];
+        }
+        const exists = teacherSubjectsMap[tId].some(s => String(s._id) === String(asg.subject._id));
+        if (!exists) {
+          teacherSubjectsMap[tId].push({
+            _id: asg.subject._id,
+            name: asg.subject.name,
+            code: asg.subject.code,
+            department: asg.subject.department
+          });
+        }
+      }
+    });
+
+    const enrichedTeachers = teachers.map(t => {
+      const normalized = ensureTeacherQualifications(t);
+      const doc = normalized.toObject ? normalized.toObject() : { ...normalized };
+      doc.assignedSubjects = teacherSubjectsMap[String(t._id)] || [];
+      return doc;
+    });
+
+    res.status(200).json({ success: true, teachers: enrichedTeachers });
   } catch (error) {
+    console.error('Failed to fetch teachers:', error);
     res.status(500).json({ success: false, error: 'Failed to fetch teachers' });
   }
 };
@@ -2604,14 +2757,14 @@ exports.updateUserStatus = async (req, res) => {
 
     const user = await User.findOne({ _id: id, institution: req.currentUser.institution._id });
     if (!user) return res.status(404).json({ success: false, error: 'User not found' });
-    
+
     if (user.role === 'admin') {
-       return res.status(403).json({ success: false, error: 'Cannot modify admin status via this endpoint' });
+      return res.status(403).json({ success: false, error: 'Cannot modify admin status via this endpoint' });
     }
 
     user.isActive = isActive;
     await user.save();
-    
+
     // Destroy sessions if user is deactivated
     if (!isActive) {
       await mongoose.connection.collection('sessions').deleteMany({ 'session.userId': user._id.toString() });
@@ -3597,7 +3750,17 @@ exports.reconcileStudentGroups = async (req, res) => {
 
 exports.getSubjects = async (req, res) => {
   try {
-    const subjects = await Subject.find({ institution: req.currentUser.institution._id })
+    const { academicYear, department } = req.query;
+    const query = { institution: req.currentUser.institution._id };
+
+    if (academicYear) {
+      query.academicYear = academicYear;
+    }
+    if (department) {
+      query.department = department;
+    }
+
+    const subjects = await Subject.find(query)
       .populate('departmentRef', 'name code')
       .sort({ name: 1 });
     res.status(200).json({ success: true, subjects });
@@ -3609,14 +3772,14 @@ exports.getSubjects = async (req, res) => {
 exports.createSubject = async (req, res) => {
   try {
     const { name, code, department, description, subjectType, credits, semester, academicYear, isActive } = req.body;
-    
-    // Validate required fields
-    if (!name || !code || !department) {
-      return res.status(400).json({ success: false, error: 'Name, code, and department are required' });
+
+    // Validate required fields (Academic Year is mandatory)
+    if (!name || !code || !department || !academicYear) {
+      return res.status(400).json({ success: false, error: 'Name, code, department, and academic year are required' });
     }
 
     const trimmedCode = code.trim();
-    
+
     // Check for duplicate code
     const existingSubject = await Subject.findOne({ institution: req.currentUser.institution._id, code: trimmedCode });
     if (existingSubject) {
@@ -3653,12 +3816,12 @@ exports.createSubject = async (req, res) => {
       subjectType: subjectType || 'Theory',
       credits: credits ? Number(credits) : undefined,
       semester,
-      academicYear,
+      academicYear: typeof academicYear === 'string' ? academicYear.trim() : academicYear,
       isActive: isActive !== false
     });
 
     await subject.save();
-    
+
     // Log creation
     await logAudit(req.currentUser.institution._id, req.currentUser._id, 'CREATE_SUBJECT', subject._id, 'Subject', { code: trimmedCode });
 
@@ -3676,13 +3839,14 @@ exports.updateSubject = async (req, res) => {
   try {
     const { id } = req.params;
     const { name, code, department, description, subjectType, credits, semester, academicYear } = req.body;
-    
-    if (!name || !code || !department) {
-      return res.status(400).json({ success: false, error: 'Name, code, and department are required' });
+
+    // Validate required fields (Academic Year is mandatory)
+    if (!name || !code || !department || !academicYear) {
+      return res.status(400).json({ success: false, error: 'Name, code, department, and academic year are required' });
     }
 
     const trimmedCode = code.trim();
-    
+
     const subject = await Subject.findOne({ _id: id, institution: req.currentUser.institution._id });
     if (!subject) return res.status(404).json({ success: false, error: 'Subject not found' });
 
@@ -3722,10 +3886,10 @@ exports.updateSubject = async (req, res) => {
     if (subjectType !== undefined) subject.subjectType = subjectType;
     if (credits !== undefined) subject.credits = credits ? Number(credits) : undefined;
     if (semester !== undefined) subject.semester = semester;
-    if (academicYear !== undefined) subject.academicYear = academicYear;
+    if (academicYear !== undefined) subject.academicYear = typeof academicYear === 'string' ? academicYear.trim() : academicYear;
 
     await subject.save();
-    
+
     await logAudit(req.currentUser.institution._id, req.currentUser._id, 'UPDATE_SUBJECT', subject._id, 'Subject', { code: trimmedCode });
 
     res.status(200).json({ success: true, message: 'Subject updated successfully', subject });
@@ -3741,16 +3905,16 @@ exports.updateSubjectStatus = async (req, res) => {
   try {
     const { id } = req.params;
     const { isActive } = req.body;
-    
+
     const subject = await Subject.findOne({ _id: id, institution: req.currentUser.institution._id });
     if (!subject) return res.status(404).json({ success: false, error: 'Subject not found' });
 
     // If attempting to deactivate, check dependencies if necessary.
     // For now, allow deactivation since historical records are preserved.
-    
+
     subject.isActive = isActive;
     await subject.save();
-    
+
     await logAudit(req.currentUser.institution._id, req.currentUser._id, 'UPDATE_SUBJECT_STATUS', subject._id, 'Subject', { isActive });
 
     res.status(200).json({ success: true, message: 'Subject status updated successfully' });
@@ -4094,9 +4258,10 @@ exports.deleteTeacher = async (req, res) => {
 };
 
 /**
- * @desc Permanently delete subject with dependency checks
+ * @route   GET /api/admin/subjects/:id/assignments-check
+ * @desc    Check whether a subject has existing teacher or section assignments
  */
-exports.deleteSubject = async (req, res) => {
+exports.checkSubjectAssignments = async (req, res) => {
   try {
     const { id } = req.params;
     const institutionId = req.currentUser.institution._id;
@@ -4110,36 +4275,128 @@ exports.deleteSubject = async (req, res) => {
       return res.status(404).json({ success: false, error: 'Subject not found.' });
     }
 
-    // Dependency check 1: Teaching assignments
-    const hasAssignments = await TeachingAssignment.exists({ subject: subject._id });
-    if (hasAssignments) {
-      return res.status(400).json({
-        success: false,
-        error: `Cannot delete subject "${subject.code}" because it is currently assigned to one or more teaching assignments.`
-      });
-    }
+    const assignments = await TeachingAssignment.find({
+      subject: subject._id,
+      institution: institutionId
+    }).populate('classRef', 'name section').populate('teacher', 'teacherId personalInfo');
 
-    // Dependency check 2: Academic records
-    const hasRecords = await AcademicRecord.exists({ subject: subject._id });
-    if (hasRecords) {
-      return res.status(400).json({
-        success: false,
-        error: `Cannot delete subject "${subject.code}" because student academic records exist for this subject.`
-      });
-    }
-
-    await Subject.findByIdAndDelete(subject._id);
-
-    await logAudit(institutionId, req.currentUser._id, 'DELETE_SUBJECT', subject._id, 'Subject', {
-      code: subject.code,
-      name: subject.name
-    });
+    const totalCount = assignments.length;
+    const teacherCount = assignments.filter(a => a.teacher).length;
+    const sectionCount = new Set(assignments.map(a => a.classRef?._id?.toString() || a.classRef?.toString()).filter(Boolean)).size;
 
     return res.status(200).json({
       success: true,
-      message: `Subject "${subject.code} - ${subject.name}" was permanently deleted.`
+      hasAssignments: totalCount > 0,
+      assignmentCount: totalCount,
+      teacherCount,
+      sectionCount,
+      subject: {
+        _id: subject._id,
+        name: subject.name,
+        code: subject.code
+      }
     });
   } catch (error) {
+    console.error('checkSubjectAssignments error:', error);
+    return res.status(500).json({ success: false, error: 'Failed to check subject assignments.' });
+  }
+};
+
+/**
+ * @desc Permanently delete subject with assignment-aware confirmation & cascading removal of assignments
+ */
+exports.deleteSubject = async (req, res) => {
+  let session = null;
+  try {
+    const { id } = req.params;
+    const institutionId = req.currentUser.institution._id;
+    const cascadeConfirmed = req.query.cascade === 'true' ||
+      req.body?.cascadeAssignments === true ||
+      req.body?.confirmAssignments === true;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ success: false, error: 'Invalid subject ID.' });
+    }
+
+    const subject = await Subject.findOne({ _id: id, institution: institutionId });
+    if (!subject) {
+      return res.status(404).json({ success: false, error: 'Subject not found.' });
+    }
+
+    // 1. Identify all teacher & section assignments associated with the subject
+    const assignmentsCount = await TeachingAssignment.countDocuments({
+      subject: subject._id,
+      institution: institutionId
+    });
+
+    // 2. If subject has existing assignments and cascade confirmation was NOT provided, require confirmation
+    if (assignmentsCount > 0 && !cascadeConfirmed) {
+      return res.status(409).json({
+        success: false,
+        hasAssignments: true,
+        assignmentCount: assignmentsCount,
+        error: 'This subject is currently assigned to teachers or sections. If you continue, all assignments associated with this subject will be removed. This action cannot be undone.'
+      });
+    }
+
+    // 3. Atomically remove assignments and delete subject record using MongoDB transaction where supported
+    try {
+      session = await mongoose.startSession();
+      session.startTransaction();
+    } catch (sessionErr) {
+      session = null;
+    }
+
+    let deletedAssignmentsCount = 0;
+    if (assignmentsCount > 0) {
+      const deleteAssignmentsRes = session
+        ? await TeachingAssignment.deleteMany({ subject: subject._id, institution: institutionId }).session(session)
+        : await TeachingAssignment.deleteMany({ subject: subject._id, institution: institutionId });
+      deletedAssignmentsCount = deleteAssignmentsRes.deletedCount || 0;
+    }
+
+    // Clean up subject concepts (does not delete student marks, attendance, or academic records)
+    if (session) {
+      await SubjectConcept.deleteMany({ subject: subject._id, institution: institutionId }).session(session);
+    } else {
+      await SubjectConcept.deleteMany({ subject: subject._id, institution: institutionId });
+    }
+
+    // Delete the subject record
+    if (session) {
+      await Subject.findByIdAndDelete(subject._id).session(session);
+    } else {
+      await Subject.findByIdAndDelete(subject._id);
+    }
+
+    // Log audit
+    await logAudit(institutionId, req.currentUser._id, 'DELETE_SUBJECT', subject._id, 'Subject', {
+      code: subject.code,
+      name: subject.name,
+      deletedAssignmentsCount
+    });
+
+    if (session) {
+      await session.commitTransaction();
+      session.endSession();
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: deletedAssignmentsCount > 0
+        ? `Subject "${subject.name} (${subject.code})" and all associated assignments were permanently deleted.`
+        : `Subject "${subject.name} (${subject.code})" was permanently deleted.`,
+      deletedAssignmentsCount
+    });
+  } catch (error) {
+    if (session) {
+      try {
+        await session.abortTransaction();
+        session.endSession();
+      } catch (abortErr) {
+        // ignore
+      }
+    }
     console.error('deleteSubject error:', error);
     return res.status(500).json({ success: false, error: 'Failed to delete subject.' });
   }
@@ -4250,11 +4507,11 @@ exports.deleteClass = async (req, res) => {
       classRef: classDoc._id
     });
 
-    const isConfirmed = req.query.confirm === 'true' || 
-                        req.query.confirmed === 'true' || 
-                        req.query.force === 'true' || 
-                        req.body?.confirm === true || 
-                        req.body?.confirmed === true;
+    const isConfirmed = req.query.confirm === 'true' ||
+      req.query.confirmed === 'true' ||
+      req.query.force === 'true' ||
+      req.body?.confirm === true ||
+      req.body?.confirmed === true;
 
     // If section has dependencies and admin hasn't confirmed, prompt for explicit confirmation
     if ((studentCount > 0 || assignmentCount > 0) && !isConfirmed) {

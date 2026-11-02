@@ -1,57 +1,60 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Link, useNavigate, useOutletContext } from 'react-router-dom';
-import { 
-  User, 
-  KeyRound, 
-  Bell, 
-  Palette, 
-  ShieldCheck, 
-  Info, 
-  ExternalLink, 
-  Save, 
-  Loader2, 
-  CheckCircle2, 
-  AlertCircle, 
-  LogOut, 
-  Building, 
-  Sun, 
-  Moon,
+import {
+  User,
+  Shield,
+  Monitor,
   Lock,
+  KeyRound,
+  Bell,
+  Users,
+  ClipboardList,
+  BarChart2,
+  ShieldCheck,
+  Landmark,
+  Building,
+  ExternalLink,
+  ChevronRight,
   FileText,
-  Sliders,
-  Check
+  Save,
+  Loader2,
+  CheckCircle2,
+  AlertCircle,
+  X
 } from 'lucide-react';
 import { authApi, adminApi } from '../api';
 import { usePageRefresh } from '../context/RefreshContext';
-import { useTheme } from '../context/ThemeContext';
-import pkg from '../../package.json';
 
 export default function GeneralSettings(props) {
   const navigate = useNavigate();
-  const { theme } = useTheme();
   const outletContext = useOutletContext() || {};
-  
-  // Resolve current user and logout handler from props or outlet context
+
+  // Resolve initial user from props or outlet context
   const currentUser = props.currentUser || outletContext.currentUser;
-  const onLogout = props.onLogout || outletContext.onLogout;
 
-  // Account State
-  const [adminUser, setAdminUser] = useState(currentUser || null);
-  const [fetchingUser, setFetchingUser] = useState(!currentUser);
+  // 1. Synchronized Administrator Account State (single source of truth: Admin My Profile)
+  const [adminProfile, setAdminProfile] = useState({
+    name: currentUser?.name || '',
+    userId: currentUser?.userId || '0001',
+    email: currentUser?.email || '',
+    profilePhoto: currentUser?.profilePhoto || ''
+  });
+  const [fetchingProfile, setFetchingProfile] = useState(true);
 
-  // Notification Preferences State
+  // 2. Notification Preferences State (Exactly 5 settings)
   const [notifications, setNotifications] = useState({
     inApp: true,
-    academicRecords: true,
     accountActivity: true,
-    riskAlerts: true
+    academicRecords: true,
+    riskAlerts: true,
+    securityAlerts: true
   });
   const [loadingPrefs, setLoadingPrefs] = useState(true);
   const [savingPrefs, setSavingPrefs] = useState(false);
   const [prefsSuccess, setPrefsSuccess] = useState('');
   const [prefsError, setPrefsError] = useState('');
 
-  // Password Change Modal / Accordion State
+  // 3. Change Password Modal State
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -60,45 +63,128 @@ export default function GeneralSettings(props) {
   const [pwSuccess, setPwSuccess] = useState('');
   const [pwLoading, setPwLoading] = useState(false);
 
-  const loadData = useCallback(async () => {
-    // 1. Fetch current user if not provided
-    if (!currentUser) {
-      try {
-        const res = await authApi.getMe();
-        if (res.success && res.user) {
-          setAdminUser(res.user);
-        }
-      } catch (err) {
-        console.error('Failed to fetch user in settings:', err);
-      } finally {
-        setFetchingUser(false);
+  // ==========================================================
+  // Synchronize Administrator Profile (Single Source of Truth)
+  // ==========================================================
+  const syncAdminProfile = useCallback(async () => {
+    try {
+      setFetchingProfile(true);
+      // Fetch latest saved profile from the admin profile API
+      const res = await adminApi.getAdminProfile();
+      if (res && res.success && res.profile) {
+        setAdminProfile({
+          name: res.profile.name || '',
+          userId: res.profile.userId || currentUser?.userId || '0001',
+          email: res.profile.email || '',
+          profilePhoto: res.profile.profilePhoto || ''
+        });
+        return;
       }
-    } else {
-      setAdminUser(currentUser);
-      setFetchingUser(false);
-    }
 
-    // 2. Fetch saved notification preferences from backend
+      // Fallback: fetch session user if profile endpoint did not return
+      const meRes = await authApi.getMe();
+      if (meRes && meRes.success && meRes.user) {
+        setAdminProfile(prev => ({
+          ...prev,
+          name: meRes.user.name || prev.name || 'Administrator',
+          userId: meRes.user.userId || prev.userId || '0001',
+          email: meRes.user.email || prev.email || ''
+        }));
+      }
+    } catch (err) {
+      console.warn('Could not sync admin profile in settings:', err);
+      if (currentUser) {
+        setAdminProfile({
+          name: currentUser.name || 'Administrator',
+          userId: currentUser.userId || '0001',
+          email: currentUser.email || '',
+          profilePhoto: currentUser.profilePhoto || ''
+        });
+      }
+    } finally {
+      setFetchingProfile(false);
+    }
+  }, [currentUser]);
+
+  // ==========================================================
+  // Fetch Notification Preferences from MongoDB
+  // ==========================================================
+  const fetchPreferences = useCallback(async () => {
     try {
       setLoadingPrefs(true);
       const res = await adminApi.getPreferences();
-      if (res.success && res.preferences?.notifications) {
-        setNotifications(res.preferences.notifications);
+      const savedSecPref = localStorage.getItem('classpulse_pref_securityAlerts');
+
+      if (res && res.success && res.preferences?.notifications) {
+        const backendPrefs = res.preferences.notifications;
+        setNotifications({
+          inApp: backendPrefs.inApp ?? true,
+          accountActivity: backendPrefs.accountActivity ?? true,
+          academicRecords: backendPrefs.academicRecords ?? true,
+          riskAlerts: backendPrefs.riskAlerts ?? true,
+          securityAlerts: savedSecPref !== null ? savedSecPref === 'true' : (backendPrefs.securityAlerts ?? true)
+        });
+      } else if (savedSecPref !== null) {
+        setNotifications(prev => ({
+          ...prev,
+          securityAlerts: savedSecPref === 'true'
+        }));
       }
     } catch (err) {
       console.warn('Could not load preferences from backend:', err);
     } finally {
       setLoadingPrefs(false);
     }
-  }, [currentUser]);
+  }, []);
 
+  // Combined data loader for initial mount and page refresh
+  const loadData = useCallback(async () => {
+    await Promise.all([syncAdminProfile(), fetchPreferences()]);
+  }, [syncAdminProfile, fetchPreferences]);
+
+  // Hook into application global header refresh button
   usePageRefresh(loadData);
 
+  // Initial load on mount
   useEffect(() => {
     loadData();
   }, [loadData]);
 
-  // Handle Notification Toggle
+  // Refresh profile when navigating back to Settings or when browser tab becomes active
+  useEffect(() => {
+    const handleVisibilityOrFocus = () => {
+      if (document.visibilityState === 'visible') {
+        syncAdminProfile();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityOrFocus);
+    window.addEventListener('focus', handleVisibilityOrFocus);
+    window.addEventListener('admin-profile-updated', handleVisibilityOrFocus);
+    window.addEventListener('storage', handleVisibilityOrFocus);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityOrFocus);
+      window.removeEventListener('focus', handleVisibilityOrFocus);
+      window.removeEventListener('admin-profile-updated', handleVisibilityOrFocus);
+      window.removeEventListener('storage', handleVisibilityOrFocus);
+    };
+  }, [syncAdminProfile]);
+
+  // Close password modal on Escape key
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape' && showPasswordModal) {
+        setShowPasswordModal(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [showPasswordModal]);
+
+  // ==========================================================
+  // Toggle Switch Handler
+  // ==========================================================
   const handleToggle = (key) => {
     setNotifications(prev => ({
       ...prev,
@@ -108,7 +194,9 @@ export default function GeneralSettings(props) {
     setPrefsError('');
   };
 
-  // Save Preferences to Backend
+  // ==========================================================
+  // Save Notification Preferences Handler
+  // ==========================================================
   const handleSavePreferences = async (e) => {
     e.preventDefault();
     setSavingPrefs(true);
@@ -116,23 +204,44 @@ export default function GeneralSettings(props) {
     setPrefsError('');
 
     try {
-      const res = await adminApi.updatePreferences({ notifications });
-      if (res.success) {
-        setPrefsSuccess('Notification preferences saved successfully to your account.');
-        if (res.preferences?.notifications) {
-          setNotifications(res.preferences.notifications);
+      localStorage.setItem('classpulse_pref_securityAlerts', String(notifications.securityAlerts));
+
+      const payload = {
+        notifications: {
+          inApp: notifications.inApp,
+          accountActivity: notifications.accountActivity,
+          academicRecords: notifications.academicRecords,
+          riskAlerts: notifications.riskAlerts,
+          securityAlerts: notifications.securityAlerts
         }
+      };
+
+      const res = await adminApi.updatePreferences(payload);
+      if (res && res.success) {
+        setPrefsSuccess('Notification preferences saved successfully.');
+        if (res.preferences?.notifications) {
+          setNotifications(prev => ({
+            ...prev,
+            inApp: res.preferences.notifications.inApp ?? prev.inApp,
+            accountActivity: res.preferences.notifications.accountActivity ?? prev.accountActivity,
+            academicRecords: res.preferences.notifications.academicRecords ?? prev.academicRecords,
+            riskAlerts: res.preferences.notifications.riskAlerts ?? prev.riskAlerts
+          }));
+        }
+        setTimeout(() => setPrefsSuccess(''), 4000);
       } else {
-        setPrefsError(res.error || 'Failed to save preferences.');
+        setPrefsError(res?.error || 'Failed to save notification preferences.');
       }
     } catch (err) {
-      setPrefsError(err.response?.data?.error || 'Failed to save notification preferences.');
+      setPrefsError(err.response?.data?.error || err.message || 'Failed to save notification preferences.');
     } finally {
       setSavingPrefs(false);
     }
   };
 
-  // Handle Password Change
+  // ==========================================================
+  // Change Password Handler
+  // ==========================================================
   const handlePasswordSubmit = async (e) => {
     e.preventDefault();
     setPwError('');
@@ -166,7 +275,7 @@ export default function GeneralSettings(props) {
     setPwLoading(true);
     try {
       const res = await authApi.changePassword(currentPassword, newPassword, confirmPassword);
-      if (res.success) {
+      if (res && res.success) {
         setPwSuccess('Password changed successfully.');
         setCurrentPassword('');
         setNewPassword('');
@@ -183,340 +292,238 @@ export default function GeneralSettings(props) {
     }
   };
 
-  // Secure Logout
-  const handleSecureLogout = async () => {
-    if (onLogout) {
-      await onLogout();
-      navigate('/');
-    } else {
-      await authApi.logout();
-      navigate('/');
+  // Exactly five notification settings matching reference icons
+  const notificationSettings = [
+    {
+      key: 'inApp',
+      name: 'In-App Notifications',
+      icon: Bell
+    },
+    {
+      key: 'accountActivity',
+      name: 'Student & Teacher Updates',
+      icon: Users
+    },
+    {
+      key: 'academicRecords',
+      name: 'Academic & Assessment Updates',
+      icon: ClipboardList
+    },
+    {
+      key: 'riskAlerts',
+      name: 'Student Risk Alerts',
+      icon: BarChart2
+    },
+    {
+      key: 'securityAlerts',
+      name: 'Security Alerts',
+      icon: ShieldCheck
     }
-  };
+  ];
 
   return (
-    <div className="space-y-6 pb-16 transition-colors duration-200">
-      {/* Header Row: Description on left, College Settings button on right */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-3 border-b border-slate-200 dark:border-slate-800">
-        <p className="text-sm text-slate-500 dark:text-slate-400">
-          Configure your personal account preferences, notification rules, security policies, and application information.
-        </p>
-
-        {/* Link to College Settings */}
-        <div className="shrink-0 flex items-center">
-          <Link
-            to="/admin/college-settings"
-            className="inline-flex items-center gap-2 px-4 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 rounded-xl text-sm font-semibold transition-colors shadow-xs whitespace-nowrap"
-            title="Open College & Institution Profile Settings"
-          >
-            <Building className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
-            <span>College Settings</span>
-            <ExternalLink className="w-3.5 h-3.5 text-slate-400" />
-          </Link>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+    <div className="space-y-6 pb-12 transition-colors duration-200">
+      {/* =======================================================
+          MAIN SETTINGS GRID (EXACTLY FOUR SECTIONS)
+      ======================================================= */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-stretch">
         {/* =======================================================
-            1. ACCOUNT PREFERENCES
+            ROW 1 - LEFT: ACCOUNT CARD
         ======================================================= */}
-        <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 p-6 flex flex-col justify-between transition-colors">
+        <div className="bg-white dark:bg-[#111726] rounded-2xl border border-slate-200 dark:border-[#1e2738] p-6 flex flex-col justify-between transition-colors">
           <div>
-            <div className="flex items-center gap-3 mb-4">
-              <div className="p-2.5 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-900/40">
+            {/* Account Card Heading */}
+            <div className="flex items-center gap-3 mb-5">
+              <div className="p-2.5 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-900/40 shrink-0">
                 <User className="w-5 h-5" />
               </div>
               <div>
-                <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100">Account Preferences</h2>
-                <p className="text-xs text-slate-500 dark:text-slate-400">Authenticated administrator profile and credential options</p>
+                <h2 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white">Account</h2>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Administrator account details</p>
               </div>
             </div>
 
-            {fetchingUser ? (
+            {fetchingProfile ? (
               <div className="py-6 flex items-center justify-center text-slate-400 gap-2 text-sm">
-                <Loader2 className="w-4 h-4 animate-spin text-indigo-600" />
+                <Loader2 className="w-5 h-5 animate-spin text-indigo-600 dark:text-indigo-400" />
                 <span>Loading account details...</span>
               </div>
             ) : (
-              <div className="space-y-4 pt-1">
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/60 text-xs">
-                  <div>
-                    <span className="text-slate-400 dark:text-slate-400 block font-medium">Full Name</span>
-                    <span className="font-semibold text-slate-800 dark:text-slate-200 text-sm mt-0.5 block truncate">
-                      {adminUser?.name || 'Administrator'}
-                    </span>
+              <div className="flex items-center gap-4 mb-6">
+                {/* Profile Photo / Avatar */}
+                {adminProfile.profilePhoto ? (
+                  <img
+                    src={adminProfile.profilePhoto}
+                    alt={adminProfile.name || 'Administrator'}
+                    className="w-14 h-14 sm:w-16 sm:h-16 rounded-full object-cover border-2 border-indigo-200 dark:border-indigo-800 shrink-0"
+                  />
+                ) : (
+                  <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-gradient-to-tr from-indigo-600 to-indigo-700 text-white flex items-center justify-center shrink-0 shadow-xs border-2 border-indigo-200/50 dark:border-indigo-800/50">
+                    <User className="w-8 h-8 text-white/90" />
                   </div>
-                  <div>
-                    <span className="text-slate-400 dark:text-slate-400 block font-medium">Login User ID</span>
-                    <span className="font-semibold text-slate-800 dark:text-slate-200 text-sm mt-0.5 block font-mono">
-                      {adminUser?.userId || 'admin'}
-                    </span>
-                  </div>
-                  <div>
-                    <span className="text-slate-400 dark:text-slate-400 block font-medium">Role</span>
-                    <span className="inline-block mt-1 px-2 py-0.5 rounded-md font-semibold text-[11px] uppercase tracking-wide bg-indigo-100 dark:bg-indigo-950/70 text-indigo-700 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800/50">
-                      {adminUser?.role || 'admin'}
-                    </span>
-                  </div>
-                </div>
+                )}
 
-                <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200/80 dark:border-slate-800 text-xs text-slate-600 dark:text-slate-400 flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-2">
-                    <Lock className="w-4 h-4 text-slate-400" />
-                    <span>Password protection: <strong>Encrypted with Bcrypt</strong> (Never exposed)</span>
+                {/* Name & Login ID (NO Administrator badge) */}
+                <div className="min-w-0 flex-1">
+                  <h3 className="text-base sm:text-lg font-semibold text-slate-900 dark:text-white truncate">
+                    {adminProfile.name || 'Administrator'}
+                  </h3>
+                  <div className="flex items-center gap-1.5 text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-1">
+                    <FileText className="w-4 h-4 text-slate-400 shrink-0" />
+                    <span>Login ID : {adminProfile.userId || '0001'}</span>
                   </div>
                 </div>
               </div>
             )}
           </div>
 
-          <div className="pt-5 mt-5 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-3 flex-wrap">
+          {/* Bottom Action: Open My Profile */}
+          <div className="pt-2">
             <Link
               to="/admin/profile"
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 rounded-lg transition-colors"
+              className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-indigo-600/60 dark:border-indigo-500/70 hover:border-indigo-600 dark:hover:border-indigo-400 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 font-semibold text-sm transition-colors cursor-pointer"
             >
-              <User className="w-3.5 h-3.5" />
+              <User className="w-4 h-4" />
               <span>Open My Profile</span>
-              <ExternalLink className="w-3 h-3 ml-0.5" />
+              <ExternalLink className="w-3.5 h-3.5 ml-0.5 opacity-80" />
             </Link>
-
-            <button
-              onClick={() => {
-                setShowPasswordModal(true);
-                setPwError('');
-                setPwSuccess('');
-              }}
-              type="button"
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-lg shadow-xs transition-colors cursor-pointer"
-            >
-              <KeyRound className="w-3.5 h-3.5" />
-              <span>Change Password</span>
-            </button>
           </div>
         </div>
 
         {/* =======================================================
-            2. APPEARANCE INFORMATION
+            ROW 1 - RIGHT: SECURITY CARD
         ======================================================= */}
-        <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 p-6 flex flex-col justify-between transition-colors">
+        <div className="bg-white dark:bg-[#111726] rounded-2xl border border-slate-200 dark:border-[#1e2738] p-6 flex flex-col justify-between transition-colors">
           <div>
-            <div className="flex items-center gap-3 mb-4">
-              <div className="p-2.5 rounded-xl bg-purple-50 dark:bg-purple-950/60 text-purple-600 dark:text-purple-400 border border-purple-100 dark:border-purple-900/40">
-                <Palette className="w-5 h-5" />
+            {/* Security Card Heading */}
+            <div className="flex items-center gap-3 mb-5">
+              <div className="p-2.5 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-900/40 shrink-0">
+                <Shield className="w-5 h-5" />
               </div>
               <div>
-                <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100">Appearance Information</h2>
-                <p className="text-xs text-slate-500 dark:text-slate-400">Global interface theme synchronization</p>
+                <h2 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white">Security</h2>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Account security options</p>
               </div>
             </div>
 
-            <div className="space-y-4 pt-1">
-              <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/60 flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  {theme === 'dark' ? (
-                    <div className="p-2 rounded-lg bg-amber-400/10 text-amber-400 border border-amber-400/20">
-                      <Sun className="w-5 h-5" />
-                    </div>
-                  ) : (
-                    <div className="p-2 rounded-lg bg-indigo-50 text-indigo-600 border border-indigo-100">
-                      <Moon className="w-5 h-5" />
-                    </div>
-                  )}
-                  <div>
-                    <span className="text-sm font-semibold text-slate-900 dark:text-slate-100 block">
-                      Active Theme: {theme === 'dark' ? 'Dark Mode' : 'Light Mode'}
-                    </span>
-                    <span className="text-xs text-slate-500 dark:text-slate-400 block mt-0.5">
-                      High-contrast, eye-friendly layout active across all pages.
-                    </span>
-                  </div>
+            {/* Security Rows */}
+            <div className="space-y-3">
+              {/* Current Session */}
+              <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-[#161d2f] border border-slate-200 dark:border-[#1e2738] flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <Monitor className="w-4 h-4 text-slate-400" />
+                  <span className="text-sm font-medium text-slate-700 dark:text-slate-200">
+                    Current Session
+                  </span>
                 </div>
 
-                <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-purple-100 dark:bg-purple-950/70 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800/50 uppercase tracking-wider text-[11px]">
-                  {theme}
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 dark:bg-[#063326] text-emerald-700 dark:text-[#34d399] border border-emerald-200 dark:border-[#059669]/40">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 dark:bg-[#10b981]"></span>
+                  Active
                 </span>
               </div>
 
-              <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200/80 dark:border-slate-800 text-xs text-slate-600 dark:text-slate-400 flex items-start gap-2.5">
-                <Info className="w-4 h-4 text-purple-600 dark:text-purple-400 shrink-0 mt-0.5" />
-                <p>
-                  To change between Light and Dark modes, use the dedicated theme switcher in the <strong>navigation sidebar</strong> above Logout. General Settings automatically adheres to your selected theme.
-                </p>
-              </div>
-            </div>
-          </div>
+              {/* Change Password Action */}
+              <button
+                type="button"
+                onClick={() => {
+                  setShowPasswordModal(true);
+                  setPwError('');
+                  setPwSuccess('');
+                }}
+                className="w-full p-3.5 rounded-xl bg-slate-50 dark:bg-[#161d2f] border border-slate-200 dark:border-[#1e2738] hover:border-indigo-500/50 dark:hover:border-indigo-500/50 transition-colors flex items-center justify-between cursor-pointer text-left group"
+              >
+                <div className="flex items-center gap-2.5">
+                  <Lock className="w-4 h-4 text-slate-400 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors" />
+                  <span className="text-sm font-medium text-slate-700 dark:text-slate-200 group-hover:text-indigo-600 dark:group-hover:text-white transition-colors">
+                    Change Password
+                  </span>
+                </div>
 
-          <div className="pt-5 mt-5 border-t border-slate-100 dark:border-slate-800 text-xs text-slate-400">
-            Appearance respects system preferences and persists across browser sessions.
+                <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 group-hover:translate-x-0.5 transition-all" />
+              </button>
+            </div>
           </div>
         </div>
 
         {/* =======================================================
-            3. NOTIFICATION PREFERENCES
+            ROW 2 - FULL WIDTH: NOTIFICATION PREFERENCES CARD
         ======================================================= */}
-        <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 p-6 lg:col-span-2 transition-colors">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
-            <div className="flex items-center gap-3">
-              <div className="p-2.5 rounded-xl bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 border border-blue-100 dark:border-blue-900/40">
-                <Bell className="w-5 h-5" />
-              </div>
-              <div>
-                <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100">Notification Preferences</h2>
-                <p className="text-xs text-slate-500 dark:text-slate-400">Configure which event categories trigger system alerts and updates</p>
-              </div>
+        <div className="col-span-1 lg:col-span-2 bg-white dark:bg-[#111726] rounded-2xl border border-slate-200 dark:border-[#1e2738] p-6 transition-colors">
+          {/* Card Header */}
+          <div className="flex items-center gap-3 mb-5">
+            <div className="p-2.5 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-900/40 shrink-0">
+              <Bell className="w-5 h-5" />
             </div>
-
-            <div className="flex items-center gap-2">
-              <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-2.5 py-1 rounded-full border border-slate-200 dark:border-slate-700">
-                Persisted in MongoDB
-              </span>
+            <div>
+              <h2 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white">Notification Preferences</h2>
+              <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-0.5">
+                Choose the updates you want to receive
+              </p>
             </div>
           </div>
 
-          {/* Feedback messages */}
+          {/* Feedback Messages */}
           {prefsSuccess && (
-            <div className="mb-4 p-3.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-900/50 text-emerald-800 dark:text-emerald-300 text-xs flex items-center gap-2 font-medium">
+            <div className="mb-4 p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-900/50 text-emerald-800 dark:text-emerald-300 text-xs flex items-center gap-2 font-medium">
               <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
               <span>{prefsSuccess}</span>
             </div>
           )}
 
           {prefsError && (
-            <div className="mb-4 p-3.5 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/50 text-rose-800 dark:text-rose-300 text-xs flex items-center gap-2 font-medium">
+            <div className="mb-4 p-3 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/50 text-rose-800 dark:text-rose-300 text-xs flex items-center gap-2 font-medium">
               <AlertCircle className="w-4 h-4 shrink-0 text-rose-600 dark:text-rose-400" />
               <span>{prefsError}</span>
             </div>
           )}
 
-          {/* Notification feature status banner */}
-          <div className="mb-6 p-4 rounded-xl bg-emerald-50/60 dark:bg-emerald-950/30 border border-emerald-100 dark:border-emerald-900/40 text-xs text-emerald-900 dark:text-emerald-200 flex items-start justify-between gap-3 flex-wrap">
-            <div className="flex items-start gap-3">
-              <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
-              <div>
-                <p className="font-semibold">Notification Service Status: Active & Operational</p>
-                <p className="text-emerald-700 dark:text-emerald-300 mt-0.5">
-                  Your notification rules are persisted in MongoDB. In-app alerts, badge counters, and real-time triggers adhere to these configurations. Critical security alerts and system warnings remain delivered.
-                </p>
-              </div>
-            </div>
-            <Link
-              to="/admin/notifications"
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold shadow-xs transition-colors shrink-0"
-            >
-              <span>View Notifications</span>
-              <ExternalLink className="w-3 h-3" />
-            </Link>
-          </div>
-
-          {/* Toggles */}
+          {/* 5 Notification Toggle Rows */}
           <form onSubmit={handleSavePreferences}>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* 1. In-App Notifications */}
-              <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/40 flex items-start justify-between gap-4">
-                <div>
-                  <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">In-App Notifications</h3>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                    Enable in-app banner alerts and badge counters within the admin portal.
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  role="switch"
-                  aria-checked={notifications.inApp}
-                  onClick={() => handleToggle('inApp')}
-                  className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-hidden ${
-                    notifications.inApp ? 'bg-indigo-600' : 'bg-slate-300 dark:bg-slate-700'
-                  }`}
-                >
-                  <span
-                    className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ease-in-out ${
-                      notifications.inApp ? 'translate-x-5' : 'translate-x-0'
-                    }`}
-                  />
-                </button>
-              </div>
+            <div className="divide-y divide-slate-100 dark:divide-[#1e2738] border-t border-b border-slate-100 dark:border-[#1e2738]">
+              {notificationSettings.map((item) => {
+                const IconComponent = item.icon;
+                const isChecked = Boolean(notifications[item.key]);
 
-              {/* 2. Academic & Assessment Records */}
-              <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/40 flex items-start justify-between gap-4">
-                <div>
-                  <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">Academic & Assessment Records</h3>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                    Receive updates when student exam grades, marks, or assessment batches are posted.
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  role="switch"
-                  aria-checked={notifications.academicRecords}
-                  onClick={() => handleToggle('academicRecords')}
-                  className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-hidden ${
-                    notifications.academicRecords ? 'bg-indigo-600' : 'bg-slate-300 dark:bg-slate-700'
-                  }`}
-                >
-                  <span
-                    className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ease-in-out ${
-                      notifications.academicRecords ? 'translate-x-5' : 'translate-x-0'
-                    }`}
-                  />
-                </button>
-              </div>
+                return (
+                  <div
+                    key={item.key}
+                    className="flex items-center justify-between py-3.5 px-1 sm:px-2 hover:bg-slate-50/50 dark:hover:bg-[#161d2f]/40 rounded-lg transition-colors"
+                  >
+                    <div className="flex items-center gap-3">
+                      <IconComponent className="w-4 h-4 text-slate-400 shrink-0" />
+                      <span className="text-sm font-medium text-slate-800 dark:text-slate-200">
+                        {item.name}
+                      </span>
+                    </div>
 
-              {/* 3. Student & Teacher Accounts */}
-              <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/40 flex items-start justify-between gap-4">
-                <div>
-                  <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">Account Management Alerts</h3>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                    Alerts on new student registration, faculty onboarding, or account deactivations.
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  role="switch"
-                  aria-checked={notifications.accountActivity}
-                  onClick={() => handleToggle('accountActivity')}
-                  className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-hidden ${
-                    notifications.accountActivity ? 'bg-indigo-600' : 'bg-slate-300 dark:bg-slate-700'
-                  }`}
-                >
-                  <span
-                    className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ease-in-out ${
-                      notifications.accountActivity ? 'translate-x-5' : 'translate-x-0'
-                    }`}
-                  />
-                </button>
-              </div>
-
-              {/* 4. Student Risk Analytics */}
-              <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/40 flex items-start justify-between gap-4">
-                <div>
-                  <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">Risk Analytics Alerts</h3>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                    High-priority alerts when academic drop-off or low-attendance flags are calculated.
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  role="switch"
-                  aria-checked={notifications.riskAlerts}
-                  onClick={() => handleToggle('riskAlerts')}
-                  className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-hidden ${
-                    notifications.riskAlerts ? 'bg-indigo-600' : 'bg-slate-300 dark:bg-slate-700'
-                  }`}
-                >
-                  <span
-                    className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ease-in-out ${
-                      notifications.riskAlerts ? 'translate-x-5' : 'translate-x-0'
-                    }`}
-                  />
-                </button>
-              </div>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={isChecked}
+                      aria-label={`Toggle ${item.name}`}
+                      onClick={() => handleToggle(item.key)}
+                      className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-hidden ${
+                        isChecked ? 'bg-indigo-600' : 'bg-slate-300 dark:bg-[#242e42]'
+                      }`}
+                    >
+                      <span
+                        className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ease-in-out ${
+                          isChecked ? 'translate-x-5' : 'translate-x-0'
+                        }`}
+                      />
+                    </button>
+                  </div>
+                );
+              })}
             </div>
 
-            <div className="mt-6 flex items-center justify-end">
+            {/* Bottom-right Save Button */}
+            <div className="mt-5 flex items-center justify-end">
               <button
                 type="submit"
                 disabled={savingPrefs || loadingPrefs}
-                className="inline-flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white text-xs font-semibold rounded-xl shadow-xs transition-colors cursor-pointer"
+                className="inline-flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white text-sm font-semibold rounded-xl shadow-xs transition-colors cursor-pointer"
               >
                 {savingPrefs ? (
                   <>
@@ -526,7 +533,7 @@ export default function GeneralSettings(props) {
                 ) : (
                   <>
                     <Save className="w-4 h-4" />
-                    <span>Save Notification Preferences</span>
+                    <span>Save Preferences</span>
                   </>
                 )}
               </button>
@@ -535,115 +542,29 @@ export default function GeneralSettings(props) {
         </div>
 
         {/* =======================================================
-            4. PRIVACY AND SECURITY
+            ROW 3 - FULL WIDTH: INSTITUTION CARD
         ======================================================= */}
-        <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 p-6 flex flex-col justify-between transition-colors">
-          <div>
-            <div className="flex items-center gap-3 mb-4">
-              <div className="p-2.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-900/40">
-                <ShieldCheck className="w-5 h-5" />
-              </div>
-              <div>
-                <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100">Privacy & Security</h2>
-                <p className="text-xs text-slate-500 dark:text-slate-400">Session authentication and encryption safeguards</p>
-              </div>
+        <div className="col-span-1 lg:col-span-2 bg-white dark:bg-[#111726] rounded-2xl border border-slate-200 dark:border-[#1e2738] p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4 transition-colors">
+          <div className="flex items-center gap-3.5">
+            <div className="p-2.5 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-900/40 shrink-0">
+              <Landmark className="w-5 h-5" />
             </div>
-
-            <div className="space-y-3 pt-1 text-xs text-slate-600 dark:text-slate-400">
-              <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/60 space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="font-medium text-slate-500 dark:text-slate-400">Session State</span>
-                  <span className="inline-flex items-center gap-1.5 text-emerald-700 dark:text-emerald-400 font-semibold">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-                    Active Secure Session
-                  </span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="font-medium text-slate-500 dark:text-slate-400">Cookie Protection</span>
-                  <span className="font-mono text-slate-700 dark:text-slate-300">HTTP-Only / SameSite</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="font-medium text-slate-500 dark:text-slate-400">Password Hashing</span>
-                  <span className="font-mono text-slate-700 dark:text-slate-300">Bcrypt Salted (10 rounds)</span>
-                </div>
-              </div>
-
-              <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200/80 dark:border-slate-800 text-[11px] leading-relaxed">
-                Passwords and security tokens are cryptographically hashed and never stored or returned in plaintext. Administrators can audit access records in the activity logs.
-              </div>
-            </div>
-          </div>
-
-          <div className="pt-5 mt-5 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-3 flex-wrap">
-            <Link
-              to="/admin/activity-logs"
-              className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
-            >
-              <FileText className="w-3.5 h-3.5" />
-              <span>View Audit Logs</span>
-            </Link>
-
-            <button
-              onClick={handleSecureLogout}
-              type="button"
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 dark:hover:bg-rose-900/50 text-rose-700 dark:text-rose-400 rounded-lg text-xs font-semibold transition-colors cursor-pointer"
-            >
-              <LogOut className="w-3.5 h-3.5" />
-              <span>Log Out</span>
-            </button>
-          </div>
-        </div>
-
-        {/* =======================================================
-            5. APPLICATION INFORMATION
-        ======================================================= */}
-        <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 p-6 flex flex-col justify-between transition-colors">
-          <div>
-            <div className="flex items-center gap-3 mb-4">
-              <div className="p-2.5 rounded-xl bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 border border-amber-100 dark:border-amber-900/40">
-                <Info className="w-5 h-5" />
-              </div>
-              <div>
-                <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100">Application Information</h2>
-                <p className="text-xs text-slate-500 dark:text-slate-400">System deployment and platform identity</p>
-              </div>
-            </div>
-
-            <div className="space-y-3 pt-1">
-              <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/60 space-y-2 text-xs">
-                <div className="flex items-center justify-between">
-                  <span className="text-slate-500 dark:text-slate-400 font-medium">Application Name</span>
-                  <span className="font-bold text-slate-900 dark:text-slate-100">ClassPulse</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-slate-500 dark:text-slate-400 font-medium">Platform Role</span>
-                  <span className="font-semibold text-slate-700 dark:text-slate-300">Academic & Admin Portal</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-slate-500 dark:text-slate-400 font-medium">Release Version</span>
-                  <span className="font-mono text-slate-700 dark:text-slate-300">
-                    {pkg?.version ? `v${pkg.version}` : 'v1.0.0'}
-                  </span>
-                </div>
-              </div>
-
-              <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
-                ClassPulse provides high-integrity student record keeping, hierarchical department administration, section-level subject assignment, and machine-learning driven academic risk analytics.
+            <div>
+              <h2 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white">Institution</h2>
+              <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-0.5">
+                Manage college profile and academic configuration
               </p>
             </div>
           </div>
 
-          <div className="pt-5 mt-5 border-t border-slate-100 dark:border-slate-800 flex items-center gap-4 text-xs font-semibold text-slate-600 dark:text-slate-400">
-            <Link to="/admin/college-settings" className="hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors">
-              College Settings
-            </Link>
-            <span className="text-slate-300 dark:text-slate-700">&bull;</span>
-            <Link to="/admin/profile" className="hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors">
-              My Profile
-            </Link>
-            <span className="text-slate-300 dark:text-slate-700">&bull;</span>
-            <Link to="/admin/activity-logs" className="hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors">
-              Audit Logs
+          <div className="shrink-0">
+            <Link
+              to="/admin/college-settings"
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-indigo-600/60 dark:border-indigo-500/70 hover:border-indigo-600 dark:hover:border-indigo-400 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 font-semibold text-sm transition-colors cursor-pointer"
+            >
+              <Building className="w-4 h-4" />
+              <span>College Settings</span>
+              <ExternalLink className="w-3.5 h-3.5 ml-0.5 opacity-80" />
             </Link>
           </div>
         </div>
@@ -653,24 +574,25 @@ export default function GeneralSettings(props) {
           CHANGE PASSWORD MODAL
       ======================================================= */}
       {showPasswordModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs animate-in fade-in duration-200">
-          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-800 max-w-md w-full p-6 text-left transition-all">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800 mb-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-xs animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-[#111726] rounded-2xl shadow-2xl border border-slate-200 dark:border-[#1e2738] max-w-md w-full p-6 text-left transition-all">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-[#1e2738] mb-4">
               <div className="flex items-center gap-2.5">
-                <div className="p-2 bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 rounded-lg">
+                <div className="p-2 bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-900/40 rounded-lg">
                   <KeyRound className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">Change Password</h3>
+                  <h3 className="text-base font-bold text-slate-900 dark:text-white">Change Password</h3>
                   <p className="text-xs text-slate-500 dark:text-slate-400">Update your administrator account password</p>
                 </div>
               </div>
               <button
                 type="button"
                 onClick={() => setShowPasswordModal(false)}
-                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-lg p-1"
+                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1 rounded-lg transition-colors cursor-pointer"
+                aria-label="Close modal"
               >
-                &times;
+                <X className="w-5 h-5" />
               </button>
             </div>
 
@@ -699,7 +621,7 @@ export default function GeneralSettings(props) {
                   value={currentPassword}
                   onChange={(e) => setCurrentPassword(e.target.value)}
                   placeholder="Enter current password"
-                  className="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-hidden focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                  className="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 dark:border-[#1e2738] bg-white dark:bg-[#161d2f] text-slate-900 dark:text-white focus:outline-hidden focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                 />
               </div>
 
@@ -713,7 +635,7 @@ export default function GeneralSettings(props) {
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
                   placeholder="At least 8 characters with letters & numbers"
-                  className="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-hidden focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                  className="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 dark:border-[#1e2738] bg-white dark:bg-[#161d2f] text-slate-900 dark:text-white focus:outline-hidden focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                 />
                 <span className="text-[11px] text-slate-400 dark:text-slate-400 mt-1 block">
                   Must be 8+ characters and contain letters and at least one number or symbol.
@@ -730,11 +652,11 @@ export default function GeneralSettings(props) {
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   placeholder="Re-enter new password"
-                  className="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-hidden focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                  className="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 dark:border-[#1e2738] bg-white dark:bg-[#161d2f] text-slate-900 dark:text-white focus:outline-hidden focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                 />
               </div>
 
-              <div className="pt-3 mt-4 border-t border-slate-200 dark:border-slate-800 flex items-center justify-end gap-2.5">
+              <div className="pt-3 mt-4 border-t border-slate-200 dark:border-[#1e2738] flex items-center justify-end gap-2.5">
                 <button
                   type="button"
                   onClick={() => setShowPasswordModal(false)}

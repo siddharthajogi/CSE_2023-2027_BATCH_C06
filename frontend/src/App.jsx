@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
+import { Routes, Route, Navigate, useNavigate, useLocation, Link } from 'react-router-dom';
 import { 
   Loader2, 
   Sun, 
@@ -14,7 +14,8 @@ import {
   FileText, 
   CalendarCheck, 
   BookOpenCheck, 
-  TrendingUp 
+  TrendingUp,
+  ShieldAlert
 } from 'lucide-react';
 import ClassPulseLogo from './components/ClassPulseLogo';
 import LoginCard from './components/LoginCard';
@@ -63,11 +64,33 @@ import { useTheme } from './context/ThemeContext';
 
 function ProtectedRoute({ currentUser, allowedRoles, children }) {
   if (!currentUser) {
-    return <Navigate to="/" replace />;
+    return <Navigate to="/login" replace />;
   }
 
   if (allowedRoles && !allowedRoles.includes(currentUser.role)) {
-    return <Navigate to="/" replace state={{ unauthorized: true }} />;
+    return (
+      <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col items-center justify-center p-6 text-center transition-colors">
+        <div className="w-full max-w-md bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 p-8 space-y-4">
+          <div className="w-12 h-12 rounded-full bg-rose-50 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 mx-auto flex items-center justify-center border border-rose-200 dark:border-rose-900/50">
+            <ShieldAlert className="w-6 h-6" />
+          </div>
+          <h2 className="text-xl font-bold text-slate-900 dark:text-slate-100">
+            Access Denied
+          </h2>
+          <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
+            You do not have permission to access this portal. Your account role ({currentUser.role}) is unauthorized for this section.
+          </p>
+          <div className="pt-2 flex justify-center">
+            <Link
+              to={currentUser.role === 'admin' ? '/admin/dashboard' : `/${currentUser.role}/dashboard`}
+              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold shadow-xs transition-colors"
+            >
+              Back to My Dashboard
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   return children;
@@ -79,6 +102,14 @@ export default function App() {
   const [checkingSession, setCheckingSession] = useState(true);
   const location = useLocation();
   const navigate = useNavigate();
+
+  // Helper to resolve role-based landing dashboard
+  const getDashboardPath = (role) => {
+    if (role === 'admin') return '/admin/dashboard';
+    if (role === 'teacher') return '/teacher/dashboard';
+    if (role === 'student') return '/student/dashboard';
+    return '/login';
+  };
 
   useEffect(() => {
     const restoreSession = async () => {
@@ -98,17 +129,22 @@ export default function App() {
     restoreSession();
   }, []);
 
+  // Listen for session expiration events dispatched by API interceptors
+  useEffect(() => {
+    const handleAuthExpired = () => {
+      setCurrentUser(null);
+      navigate('/login', { replace: true });
+    };
+
+    window.addEventListener('classpulse:auth-expired', handleAuthExpired);
+    return () => window.removeEventListener('classpulse:auth-expired', handleAuthExpired);
+  }, [navigate]);
+
   const handleLoginSuccess = async (credentials) => {
     const res = await authApi.login(credentials.userId, credentials.password, credentials.role);
     if (res && res.success && res.user) {
       setCurrentUser(res.user);
-      if (res.user.role === 'admin') {
-        navigate('/admin/dashboard', { replace: true });
-      } else if (res.user.role === 'teacher') {
-        navigate('/teacher/dashboard', { replace: true });
-      } else if (res.user.role === 'student') {
-        navigate('/student/dashboard', { replace: true });
-      }
+      navigate(getDashboardPath(res.user.role), { replace: true });
     }
   };
 
@@ -119,7 +155,7 @@ export default function App() {
       console.error('Logout error:', err);
     } finally {
       setCurrentUser(null);
-      navigate('/', { replace: true });
+      navigate('/login', { replace: true });
     }
   };
 
@@ -149,54 +185,70 @@ export default function App() {
     );
   }
 
-  const isUnauthorized = Boolean(location.state?.unauthorized);
-  const showLogin = !currentUser || isUnauthorized;
+  const renderLoginView = () => (
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col justify-between p-4 sm:p-6 lg:p-10 relative transition-colors duration-200">
+      {/* Quick Appearance Toggle on Login Page */}
+      <div className="absolute top-4 right-4 sm:top-6 sm:right-6">
+        <button
+          onClick={toggleTheme}
+          type="button"
+          className="p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors shadow-sm cursor-pointer flex items-center gap-2 text-xs font-medium"
+          title={`Switch to ${theme === 'dark' ? 'Light' : 'Dark'} mode`}
+        >
+          {theme === 'dark' ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-blue-600" />}
+          <span className="hidden sm:inline">{theme === 'dark' ? 'Light Mode' : 'Dark Mode'}</span>
+        </button>
+      </div>
+
+      <main className="w-full max-w-6xl mx-auto flex-1 flex flex-col justify-center py-8">
+        <div className="text-center mb-10 sm:mb-12">
+          <div className="inline-flex items-center justify-center mb-4">
+            <ClassPulseLogo size="2xl" className="hover:scale-105 transition-transform duration-300 drop-shadow-xs" />
+          </div>
+          <h1 className="text-3xl sm:text-4xl font-extrabold text-slate-900 dark:text-slate-100 tracking-tight">
+            ClassPulse
+          </h1>
+          <p className="text-sm sm:text-base text-slate-500 dark:text-slate-400 mt-2 max-w-lg mx-auto font-normal">
+            Your Journey to Knowledge and Success.
+          </p>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 lg:gap-8 items-stretch">
+          <LoginCard role="student" onLoginSuccess={handleLoginSuccess} />
+          <LoginCard role="teacher" onLoginSuccess={handleLoginSuccess} />
+          <LoginCard role="admin" onLoginSuccess={handleLoginSuccess} />
+        </div>
+      </main>
+      <footer className="text-center py-6 border-t border-slate-200 dark:border-slate-800 mt-10 text-xs text-slate-500 dark:text-slate-400">
+        &copy; 2026 ClassPulse. All rights reserved.
+      </footer>
+    </div>
+  );
 
   return (
     <Routes>
-      {/* Public Login Route */}
-      <Route path="/" element={
-        showLogin ? (
-          <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col justify-between p-4 sm:p-6 lg:p-10 relative transition-colors duration-200">
-            {/* Quick Appearance Toggle on Login Page */}
-            <div className="absolute top-4 right-4 sm:top-6 sm:right-6">
-              <button
-                onClick={toggleTheme}
-                type="button"
-                className="p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors shadow-sm cursor-pointer flex items-center gap-2 text-xs font-medium"
-                title={`Switch to ${theme === 'dark' ? 'Light' : 'Dark'} mode`}
-              >
-                {theme === 'dark' ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-blue-600" />}
-                <span className="hidden sm:inline">{theme === 'dark' ? 'Light Mode' : 'Dark Mode'}</span>
-              </button>
-            </div>
+      {/* Root Route: displays Login when unauthenticated, redirects to respective dashboard when authenticated */}
+      <Route
+        path="/"
+        element={
+          currentUser ? (
+            <Navigate to={getDashboardPath(currentUser.role)} replace />
+          ) : (
+            renderLoginView()
+          )
+        }
+      />
 
-            <main className="w-full max-w-6xl mx-auto flex-1 flex flex-col justify-center py-8">
-              <div className="text-center mb-10 sm:mb-12">
-                <div className="inline-flex items-center justify-center mb-4">
-                  <ClassPulseLogo size="2xl" className="hover:scale-105 transition-transform duration-300 drop-shadow-xs" />
-                </div>
-                <h1 className="text-3xl sm:text-4xl font-extrabold text-slate-900 dark:text-slate-100 tracking-tight">
-                  ClassPulse
-                </h1>
-                <p className="text-sm sm:text-base text-slate-500 dark:text-slate-400 mt-2 max-w-lg mx-auto font-normal">
-                  Your Journey to Knowledge and Success.
-                </p>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 lg:gap-8 items-stretch">
-                <LoginCard role="student" onLoginSuccess={handleLoginSuccess} />
-                <LoginCard role="teacher" onLoginSuccess={handleLoginSuccess} />
-                <LoginCard role="admin" onLoginSuccess={handleLoginSuccess} />
-              </div>
-            </main>
-            <footer className="text-center py-6 border-t border-slate-200 dark:border-slate-800 mt-10 text-xs text-slate-500 dark:text-slate-400">
-              &copy; 2026 ClassPulse. All rights reserved.
-            </footer>
-          </div>
-        ) : (
-          <Navigate to={currentUser.role === 'admin' ? '/admin/dashboard' : `/${currentUser.role}/dashboard`} replace />
-        )
-      } />
+      {/* Explicit /login Route: displays Login when unauthenticated, redirects to respective dashboard when authenticated */}
+      <Route
+        path="/login"
+        element={
+          currentUser ? (
+            <Navigate to={getDashboardPath(currentUser.role)} replace />
+          ) : (
+            renderLoginView()
+          )
+        }
+      />
 
       {/* Student Protected Routes */}
       <Route path="/student" element={
@@ -363,7 +415,16 @@ export default function App() {
       </Route>
 
       {/* Fallback Catch-All */}
-      <Route path="*" element={<Navigate to="/" replace />} />
+      <Route
+        path="*"
+        element={
+          currentUser ? (
+            <Navigate to={getDashboardPath(currentUser.role)} replace />
+          ) : (
+            <Navigate to="/login" replace />
+          )
+        }
+      />
     </Routes>
   );
 }

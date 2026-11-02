@@ -67,6 +67,12 @@ router.post('/students', adminController.createStudent);
 router.get('/students', adminController.getStudents);
 
 /**
+ * @route   GET /api/admin/students/next-id
+ * @desc    Get preview of the next auto-generated unique student ID
+ */
+router.get('/students/next-id', adminController.getNextStudentId);
+
+/**
  * @route   GET /api/admin/students/:id
  * @desc    Get student profile by ID
  */
@@ -209,6 +215,12 @@ router.get('/teachers/:id/dependencies', adminController.getTeacherDependencies)
  * @desc    Permanently delete a teacher record with dependency resolution
  */
 router.delete('/teachers/:id', adminController.deleteTeacher);
+
+/**
+ * @route   GET /api/admin/subjects/:id/assignments-check
+ * @desc    Check subject assignments before deletion
+ */
+router.get('/subjects/:id/assignments-check', adminController.checkSubjectAssignments);
 
 /**
  * @route   DELETE /api/admin/subjects/:id

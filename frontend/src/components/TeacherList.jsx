@@ -2,7 +2,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { adminApi } from '../api';
 import { usePageRefresh } from '../context/RefreshContext';
-import { Loader2, Search, ShieldAlert, Pencil, X, AlertCircle, CheckCircle2, Trash2, AlertTriangle, KeyRound, Eye, EyeOff } from 'lucide-react';
+import { Loader2, Search, ShieldAlert, Pencil, X, AlertCircle, CheckCircle2, Trash2, AlertTriangle, KeyRound, Eye, EyeOff, Plus } from 'lucide-react';
 import DeleteConfirmationModal from './DeleteConfirmationModal';
 import QualificationMultiSelect from './QualificationMultiSelect';
 
@@ -16,6 +16,13 @@ export default function TeacherList() {
   const [loadingDepts, setLoadingDepts] = useState(false);
   const [deptError, setDeptError] = useState('');
   const [actionSuccess, setActionSuccess] = useState('');
+
+  // Three Filters: All Departments, All Designations, All Subjects, and Summary Cards Status Filter
+  const [filterDepartment, setFilterDepartment] = useState('');
+  const [filterDesignation, setFilterDesignation] = useState('');
+  const [filterSubject, setFilterSubject] = useState('');
+  const [statusFilter, setStatusFilter] = useState('ALL'); // 'ALL' | 'ACTIVE' | 'INACTIVE'
+  const [subjects, setSubjects] = useState([]);
 
   // Delete Modal & Dependency State
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
@@ -91,8 +98,19 @@ export default function TeacherList() {
     }
   };
 
+  const fetchSubjectsList = async () => {
+    try {
+      const res = await adminApi.getSubjects();
+      if (res && res.success) {
+        setSubjects(res.subjects || []);
+      }
+    } catch (err) {
+      console.warn('Failed to load subjects in TeacherList:', err);
+    }
+  };
+
   const refreshAll = useCallback(async () => {
-    await Promise.all([fetchTeachers(), fetchDepartmentsList()]);
+    await Promise.all([fetchTeachers(), fetchDepartmentsList(), fetchSubjectsList()]);
   }, []);
 
   usePageRefresh(refreshAll);
@@ -100,6 +118,7 @@ export default function TeacherList() {
   useEffect(() => {
     fetchTeachers();
     fetchDepartmentsList();
+    fetchSubjectsList();
   }, []);
 
   // Sync selected department in Edit Teacher modal if departments finish loading after modal opens
@@ -474,47 +493,259 @@ export default function TeacherList() {
     return matched ? matched.name : t.department;
   };
 
-  const filtered = teachers.filter(t => 
-    t.teacherId.toLowerCase().includes(searchTerm.toLowerCase()) || 
-    (t.user?.name || '').toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const availableDesignations = React.useMemo(() => {
+    const set = new Set();
+    teachers.forEach(t => {
+      if (t.designation && typeof t.designation === 'string' && t.designation.trim()) {
+        set.add(t.designation.trim());
+      }
+    });
+    return Array.from(set).sort();
+  }, [teachers]);
+
+  const availableSubjects = React.useMemo(() => {
+    const map = new Map();
+    // 1. Existing subjects configured in institution
+    subjects.forEach(s => {
+      if (s && s.name && s.name.trim()) {
+        const key = s.name.toLowerCase().trim();
+        if (!map.has(key)) {
+          map.set(key, { _id: s._id, code: s.code, name: s.name.trim() });
+        }
+      }
+    });
+    // 2. Distinct subjects assigned to teachers
+    teachers.forEach(t => {
+      (t.assignedSubjects || []).forEach(asg => {
+        if (asg && asg.name && asg.name.trim()) {
+          const key = asg.name.toLowerCase().trim();
+          if (!map.has(key)) {
+            map.set(key, { _id: asg._id, code: asg.code, name: asg.name.trim() });
+          }
+        }
+      });
+    });
+    return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
+  }, [subjects, teachers]);
+
+  // Filter out any admin accounts from teacher list and counts
+  const eligibleTeachers = teachers.filter(t => t.user?.role !== 'admin' && t.role !== 'admin');
+  const totalTeachers = eligibleTeachers.length;
+  const activeTeachers = eligibleTeachers.filter(t => t.user?.isActive).length;
+  const inactiveTeachers = totalTeachers - activeTeachers;
+
+  const filtered = eligibleTeachers.filter(t => {
+    // 1. Search term: Teacher Name or Teacher ID
+    const term = searchTerm.toLowerCase().trim();
+    const name = (t.user?.name || t.personalInfo?.name || '').toLowerCase();
+    const teacherId = (t.teacherId || '').toLowerCase();
+    const matchesSearch = !term ? true : (teacherId.includes(term) || name.includes(term));
+
+    // 2. Department filter
+    const matchesDept = !filterDepartment ? true : (() => {
+      const resolved = resolveDeptName(t).toLowerCase();
+      const rawDept = (t.department || '').toLowerCase();
+      const refId = t.departmentRef ? (t.departmentRef._id ? String(t.departmentRef._id) : String(t.departmentRef)) : '';
+      const target = filterDepartment.toLowerCase().trim();
+      const targetDeptObj = departments.find(d => String(d._id) === filterDepartment || d.name === filterDepartment || d.code === filterDepartment);
+      const targetName = targetDeptObj ? targetDeptObj.name.toLowerCase() : target;
+      const targetCode = targetDeptObj && targetDeptObj.code ? targetDeptObj.code.toLowerCase() : '';
+      return (
+        resolved === targetName ||
+        rawDept === targetName ||
+        (targetCode && (resolved === targetCode || rawDept === targetCode)) ||
+        refId === filterDepartment ||
+        (targetDeptObj && String(t.department) === String(targetDeptObj._id))
+      );
+    })();
+
+    // 3. Designation filter
+    const matchesDesig = !filterDesignation ? true : (
+      (t.designation || '').toLowerCase().trim() === filterDesignation.toLowerCase().trim()
+    );
+
+    // 4. Subject filter: Teacher assigned to multiple subjects appears when any one of those subjects is selected
+    const matchesSubject = !filterSubject ? true : (() => {
+      const targetSub = filterSubject.toLowerCase().trim();
+      const assigned = t.assignedSubjects || [];
+      return assigned.some(asg => {
+        const asgId = asg._id ? String(asg._id) : '';
+        const asgCode = (asg.code || '').toLowerCase().trim();
+        const asgName = (asg.name || '').toLowerCase().trim();
+        return asgId === filterSubject || asgCode === targetSub || asgName === targetSub;
+      });
+    })();
+
+    // 5. Status filter from summary cards
+    const matchesStatus =
+      statusFilter === 'ACTIVE' ? Boolean(t.user?.isActive) :
+      statusFilter === 'INACTIVE' ? !t.user?.isActive :
+      true;
+
+    return matchesSearch && matchesDept && matchesDesig && matchesSubject && matchesStatus;
+  });
 
   if (loading) return <div className="flex justify-center py-10"><Loader2 className="w-8 h-8 animate-spin text-indigo-600" /></div>;
   if (error) return <div className="text-rose-600 bg-rose-50 p-4 rounded-lg">{error}</div>;
 
   return (
-    <div className="bg-white dark:bg-slate-900 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800 flex flex-col h-[calc(100vh-8rem)] transition-colors duration-200">
-      {actionSuccess && (
-        <div className="m-4 mb-0 p-3 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-900/50 text-emerald-700 dark:text-emerald-300 rounded-lg text-sm flex items-center gap-2 animate-in fade-in">
-          <CheckCircle2 className="w-4 h-4 shrink-0" />
-          <span>{actionSuccess}</span>
-        </div>
-      )}
-      <div className="p-4 sm:p-5 border-b border-slate-200 dark:border-slate-800 flex justify-end items-center">
-        <div className="relative w-full sm:w-72">
-          <Search className="w-5 h-5 absolute left-3 top-2.5 text-slate-400 dark:text-slate-500" />
-          <input
-            type="text"
-            placeholder="Search teachers..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="pl-10 pr-4 py-2 border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 rounded-lg focus:ring-2 focus:ring-indigo-500 w-full text-sm"
-          />
-        </div>
+    <div className="flex flex-col gap-6 h-full">
+      {/* Top Metric Cards - Clickable Summary Filter Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {/* Total Teachers Card */}
+        <button
+          type="button"
+          onClick={() => setStatusFilter('ALL')}
+          className={`p-4 rounded-xl border text-left transition-all duration-150 cursor-pointer flex items-center justify-between ${
+            statusFilter === 'ALL'
+              ? 'bg-indigo-50/70 dark:bg-indigo-950/40 border-indigo-500 dark:border-indigo-500 ring-2 ring-indigo-500/20 dark:ring-indigo-500/30 shadow-sm'
+              : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 shadow-sm hover:border-indigo-300 dark:hover:border-indigo-800/80 hover:shadow-md'
+          }`}
+          aria-pressed={statusFilter === 'ALL'}
+          aria-label="Show all teachers"
+        >
+          <div>
+            <p className={`text-sm font-medium ${statusFilter === 'ALL' ? 'text-indigo-700 dark:text-indigo-300 font-semibold' : 'text-slate-500 dark:text-slate-400'}`}>
+              Total Teachers
+            </p>
+            <p className="text-2xl font-bold text-slate-800 dark:text-slate-100">{totalTeachers}</p>
+          </div>
+        </button>
+
+        {/* Active Teachers Card */}
+        <button
+          type="button"
+          onClick={() => setStatusFilter('ACTIVE')}
+          className={`p-4 rounded-xl border text-left transition-all duration-150 cursor-pointer flex items-center justify-between ${
+            statusFilter === 'ACTIVE'
+              ? 'bg-emerald-50/70 dark:bg-emerald-950/40 border-emerald-500 dark:border-emerald-500 ring-2 ring-emerald-500/20 dark:ring-emerald-500/30 shadow-sm'
+              : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 shadow-sm hover:border-emerald-300 dark:hover:border-emerald-800/80 hover:shadow-md'
+          }`}
+          aria-pressed={statusFilter === 'ACTIVE'}
+          aria-label="Filter active teachers"
+        >
+          <div>
+            <p className={`text-sm font-medium ${statusFilter === 'ACTIVE' ? 'text-emerald-700 dark:text-emerald-300 font-semibold' : 'text-slate-500 dark:text-slate-400'}`}>
+              Active Teachers
+            </p>
+            <p className="text-2xl font-bold text-green-600 dark:text-green-400">{activeTeachers}</p>
+          </div>
+        </button>
+
+        {/* Inactive Teachers Card */}
+        <button
+          type="button"
+          onClick={() => setStatusFilter('INACTIVE')}
+          className={`p-4 rounded-xl border text-left transition-all duration-150 cursor-pointer flex items-center justify-between ${
+            statusFilter === 'INACTIVE'
+              ? 'bg-slate-100 dark:bg-slate-800 border-slate-500 dark:border-slate-400 ring-2 ring-slate-500/20 dark:ring-slate-400/30 shadow-sm'
+              : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 shadow-sm hover:border-slate-400 dark:hover:border-slate-700 hover:shadow-md'
+          }`}
+          aria-pressed={statusFilter === 'INACTIVE'}
+          aria-label="Filter inactive teachers"
+        >
+          <div>
+            <p className={`text-sm font-medium ${statusFilter === 'INACTIVE' ? 'text-slate-800 dark:text-slate-200 font-semibold' : 'text-slate-500 dark:text-slate-400'}`}>
+              Inactive Teachers
+            </p>
+            <p className="text-2xl font-bold text-slate-600 dark:text-slate-300">{inactiveTeachers}</p>
+          </div>
+        </button>
       </div>
-      
-      <div className="flex-1 overflow-auto">
-        <table className="w-full text-left text-sm whitespace-nowrap">
-          <thead className="bg-slate-50 dark:bg-slate-800/80 text-slate-900 dark:text-slate-200 sticky top-0 border-b border-slate-200 dark:border-slate-800">
-            <tr>
-              <th className="px-6 py-4 font-medium">Teacher ID</th>
-              <th className="px-6 py-4 font-medium">Name</th>
-              <th className="px-6 py-4 font-medium">Department</th>
-              <th className="px-6 py-4 font-medium">Designation</th>
-              <th className="px-6 py-4 font-medium">Status</th>
-              <th className="px-6 py-4 font-medium text-right">Actions</th>
-            </tr>
-          </thead>
+
+      {/* Main Teachers Card */}
+      <div className="bg-white dark:bg-slate-900 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800 flex flex-col flex-1 overflow-hidden transition-colors duration-200">
+        {actionSuccess && (
+          <div className="m-4 mb-0 p-3 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-900/50 text-emerald-700 dark:text-emerald-300 rounded-lg text-sm flex items-center gap-2 animate-in fade-in">
+            <CheckCircle2 className="w-4 h-4 shrink-0" />
+            <span>{actionSuccess}</span>
+          </div>
+        )}
+
+        {/* Toolbar in EXACT required order: 1. All Departments, 2. All Designations, 3. All Subjects, 4. Search Teachers, 5. Add Teacher */}
+        <div className="p-4 sm:p-5 border-b border-slate-200 dark:border-slate-800">
+          <div className="flex flex-col sm:flex-row flex-wrap lg:flex-nowrap gap-3 w-full items-stretch sm:items-center">
+            {/* 1. All Departments Dropdown */}
+            <select
+              value={filterDepartment}
+              onChange={(e) => setFilterDepartment(e.target.value)}
+              className="w-full sm:flex-1 min-w-[150px] lg:min-w-0 h-10 px-3 py-2 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 text-sm bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 cursor-pointer truncate"
+              aria-label="Filter by Department"
+            >
+              <option value="">All Departments</option>
+              {departments
+                .filter(d => d && (d.name || d._id))
+                .map(d => (
+                  <option key={d._id || d.name} value={d.name || d._id}>
+                    {d.name || d.code}
+                  </option>
+                ))}
+            </select>
+
+            {/* 2. All Designations Dropdown */}
+            <select
+              value={filterDesignation}
+              onChange={(e) => setFilterDesignation(e.target.value)}
+              className="w-full sm:flex-1 min-w-[150px] lg:min-w-0 h-10 px-3 py-2 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 text-sm bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 cursor-pointer"
+              aria-label="Filter by Designation"
+            >
+              <option value="">All Designations</option>
+              {availableDesignations.map(desig => (
+                <option key={desig} value={desig}>
+                  {desig}
+                </option>
+              ))}
+            </select>
+
+            {/* 3. All Subjects Dropdown */}
+            <select
+              value={filterSubject}
+              onChange={(e) => setFilterSubject(e.target.value)}
+              className="w-full sm:flex-1 min-w-[150px] lg:min-w-0 h-10 px-3 py-2 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 text-sm bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 cursor-pointer truncate"
+              aria-label="Filter by Subject"
+            >
+              <option value="">All Subjects</option>
+              {availableSubjects.map(sub => (
+                <option key={sub._id || sub.code || sub.name} value={sub._id || sub.name}>
+                  {sub.name}
+                </option>
+              ))}
+            </select>
+
+            {/* 4. Search Teachers */}
+            <div className="relative w-full sm:flex-1 min-w-[150px] lg:min-w-0">
+              <Search className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 pointer-events-none" />
+              <input
+                type="text"
+                placeholder="Search teachers..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full h-10 pl-10 pr-4 py-2 border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 rounded-lg focus:ring-2 focus:ring-indigo-500 text-sm"
+              />
+            </div>
+
+            {/* 5. Add Teacher */}
+            <button
+              onClick={() => navigate('/admin/teachers/create')}
+              className="h-10 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition-colors flex items-center justify-center gap-2 text-sm font-medium whitespace-nowrap cursor-pointer shadow-sm shrink-0"
+            >
+              <Plus className="w-4 h-4" /> Add Teacher
+            </button>
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-auto">
+          <table className="w-full text-left text-sm whitespace-nowrap">
+            <thead className="bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-200 sticky top-0 z-20 border-b border-slate-200 dark:border-slate-800">
+              <tr>
+                <th className="px-6 py-4 font-semibold bg-slate-50 dark:bg-slate-800">Teacher ID</th>
+                <th className="px-6 py-4 font-semibold bg-slate-50 dark:bg-slate-800">Name</th>
+                <th className="px-6 py-4 font-semibold bg-slate-50 dark:bg-slate-800">Department</th>
+                <th className="px-6 py-4 font-semibold bg-slate-50 dark:bg-slate-800">Designation</th>
+                <th className="px-6 py-4 font-semibold bg-slate-50 dark:bg-slate-800">Status</th>
+                <th className="px-6 py-4 font-semibold text-right bg-slate-50 dark:bg-slate-800">Actions</th>
+              </tr>
+            </thead>
           <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
             {filtered.map((t) => (
               <tr
@@ -553,13 +784,6 @@ export default function TeacherList() {
                   onClick={(e) => e.stopPropagation()}
                 >
                   <button
-                    onClick={() => openEditModal(t)}
-                    className="text-sm text-indigo-600 dark:text-indigo-400 hover:text-indigo-900 dark:hover:text-indigo-300 font-medium flex items-center gap-1 cursor-pointer"
-                    title="Edit Teacher Profile"
-                  >
-                    <Pencil className="w-4 h-4" /> Edit
-                  </button>
-                  <button
                     onClick={() => toggleStatus(t)}
                     className="text-sm text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 font-medium cursor-pointer"
                   >
@@ -584,11 +808,29 @@ export default function TeacherList() {
             ))}
             {filtered.length === 0 && (
               <tr>
-                <td colSpan="6" className="px-6 py-8 text-center text-slate-500 dark:text-slate-400">No teachers found.</td>
+                <td colSpan="6" className="px-6 py-12 text-center text-slate-500 dark:text-slate-400">
+                  <p className="text-base font-medium">No teachers found matching the selected filters.</p>
+                  {(statusFilter !== 'ALL' || filterDepartment || filterDesignation || filterSubject || searchTerm) && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setStatusFilter('ALL');
+                        setFilterDepartment('');
+                        setFilterDesignation('');
+                        setFilterSubject('');
+                        setSearchTerm('');
+                      }}
+                      className="mt-2 inline-flex items-center text-sm text-indigo-600 dark:text-indigo-400 hover:underline font-medium cursor-pointer"
+                    >
+                      Reset all filters
+                    </button>
+                  )}
+                </td>
               </tr>
             )}
           </tbody>
         </table>
+      </div>
       </div>
 
       {/* Edit Teacher Modal */}
@@ -631,9 +873,8 @@ export default function TeacherList() {
                       name="name"
                       value={editFormData.name}
                       onChange={handleEditChange}
-                      className={`w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-indigo-500 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 ${
-                        editErrors.name ? 'border-rose-500 ring-1 ring-rose-500' : 'border-slate-300 dark:border-slate-700'
-                      }`}
+                      className={`w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-indigo-500 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 ${editErrors.name ? 'border-rose-500 ring-1 ring-rose-500' : 'border-slate-300 dark:border-slate-700'
+                        }`}
                     />
                     {editErrors.name && (
                       <p className="text-xs text-rose-600 dark:text-rose-400 mt-1 font-medium">{editErrors.name}</p>
@@ -661,9 +902,8 @@ export default function TeacherList() {
                       name="email"
                       value={editFormData.email}
                       onChange={handleEditChange}
-                      className={`w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-indigo-500 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 ${
-                        editErrors.email ? 'border-rose-500 ring-1 ring-rose-500' : 'border-slate-300 dark:border-slate-700'
-                      }`}
+                      className={`w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-indigo-500 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 ${editErrors.email ? 'border-rose-500 ring-1 ring-rose-500' : 'border-slate-300 dark:border-slate-700'
+                        }`}
                     />
                     {editErrors.email && (
                       <p className="text-xs text-rose-600 dark:text-rose-400 mt-1 font-medium">{editErrors.email}</p>
@@ -679,9 +919,8 @@ export default function TeacherList() {
                       name="phone"
                       value={editFormData.phone}
                       onChange={handleEditChange}
-                      className={`w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-indigo-500 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 ${
-                        editErrors.phone ? 'border-rose-500 ring-1 ring-rose-500' : 'border-slate-300 dark:border-slate-700'
-                      }`}
+                      className={`w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-indigo-500 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 ${editErrors.phone ? 'border-rose-500 ring-1 ring-rose-500' : 'border-slate-300 dark:border-slate-700'
+                        }`}
                     />
                     {editErrors.phone && (
                       <p className="text-xs text-rose-600 dark:text-rose-400 mt-1 font-medium">{editErrors.phone}</p>
@@ -697,9 +936,8 @@ export default function TeacherList() {
                       value={editFormData.address}
                       onChange={handleEditChange}
                       rows={2}
-                      className={`w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-indigo-500 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 ${
-                        editErrors.address ? 'border-rose-500 ring-1 ring-rose-500' : 'border-slate-300 dark:border-slate-700'
-                      }`}
+                      className={`w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-indigo-500 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 ${editErrors.address ? 'border-rose-500 ring-1 ring-rose-500' : 'border-slate-300 dark:border-slate-700'
+                        }`}
                     />
                     {editErrors.address && (
                       <p className="text-xs text-rose-600 dark:text-rose-400 mt-1 font-medium">{editErrors.address}</p>
@@ -741,14 +979,13 @@ export default function TeacherList() {
                         const val = e.target.value;
                         setDepartmentSelect(val);
                         if (editErrors.department) {
-                          setEditErrors(prev => { const u = {...prev}; delete u.department; return u; });
+                          setEditErrors(prev => { const u = { ...prev }; delete u.department; return u; });
                         }
                         if (val !== 'Other') setEditFormData(prev => ({ ...prev, department: val }));
                         else setEditFormData(prev => ({ ...prev, department: '' }));
                       }}
-                      className={`w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-indigo-500 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 ${
-                        editErrors.department ? 'border-rose-500 ring-1 ring-rose-500' : 'border-slate-300 dark:border-slate-700'
-                      }`}
+                      className={`w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-indigo-500 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 ${editErrors.department ? 'border-rose-500 ring-1 ring-rose-500' : 'border-slate-300 dark:border-slate-700'
+                        }`}
                     >
                       <option value="">Select Department</option>
                       {loadingDepts ? (
@@ -795,14 +1032,13 @@ export default function TeacherList() {
                         const val = e.target.value;
                         setDesignationSelect(val);
                         if (editErrors.designation) {
-                          setEditErrors(prev => { const u = {...prev}; delete u.designation; return u; });
+                          setEditErrors(prev => { const u = { ...prev }; delete u.designation; return u; });
                         }
                         if (val !== 'Other') setEditFormData(prev => ({ ...prev, designation: val }));
                         else setEditFormData(prev => ({ ...prev, designation: '' }));
                       }}
-                      className={`w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-indigo-500 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 ${
-                        editErrors.designation ? 'border-rose-500 ring-1 ring-rose-500' : 'border-slate-300 dark:border-slate-700'
-                      }`}
+                      className={`w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-indigo-500 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 ${editErrors.designation ? 'border-rose-500 ring-1 ring-rose-500' : 'border-slate-300 dark:border-slate-700'
+                        }`}
                     >
                       <option value="">Select Designation</option>
                       {designationsList.map(d => <option key={d} value={d}>{d}</option>)}
@@ -860,14 +1096,13 @@ export default function TeacherList() {
                         const val = e.target.value;
                         setSpecializationSelect(val);
                         if (editErrors.specialization) {
-                          setEditErrors(prev => { const u = {...prev}; delete u.specialization; return u; });
+                          setEditErrors(prev => { const u = { ...prev }; delete u.specialization; return u; });
                         }
                         if (val !== 'Other') setEditFormData(prev => ({ ...prev, specialization: val }));
                         else setEditFormData(prev => ({ ...prev, specialization: '' }));
                       }}
-                      className={`w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-indigo-500 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 ${
-                        editErrors.specialization ? 'border-rose-500 ring-1 ring-rose-500' : 'border-slate-300 dark:border-slate-700'
-                      }`}
+                      className={`w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-indigo-500 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 ${editErrors.specialization ? 'border-rose-500 ring-1 ring-rose-500' : 'border-slate-300 dark:border-slate-700'
+                        }`}
                     >
                       <option value="">Select Specialization</option>
                       {specializationsList.map(s => <option key={s} value={s}>{s}</option>)}
@@ -901,9 +1136,8 @@ export default function TeacherList() {
                       onChange={handleEditChange}
                       min="0"
                       max="60"
-                      className={`w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-indigo-500 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 ${
-                        editErrors.yearsOfExperience ? 'border-rose-500 ring-1 ring-rose-500' : 'border-slate-300 dark:border-slate-700'
-                      }`}
+                      className={`w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-indigo-500 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 ${editErrors.yearsOfExperience ? 'border-rose-500 ring-1 ring-rose-500' : 'border-slate-300 dark:border-slate-700'
+                        }`}
                       placeholder="e.g. 5"
                     />
                     {editErrors.yearsOfExperience && (
@@ -959,11 +1193,11 @@ export default function TeacherList() {
         secondaryAction={
           teacherDependencies?.recordedGradesCount > 0 || (teacherDependencies?.hasDependencies && teacherToDelete?.user?.isActive !== false)
             ? {
-                label: 'Deactivate Account Instead',
-                onClick: () => confirmDelete('deactivate'),
-                disabled: deleting,
-                loading: deleting
-              }
+              label: 'Deactivate Account Instead',
+              onClick: () => confirmDelete('deactivate'),
+              disabled: deleting,
+              loading: deleting
+            }
             : null
         }
       >
@@ -1012,11 +1246,10 @@ export default function TeacherList() {
               </label>
 
               {/* Option 1: Unassign */}
-              <label className={`flex items-start gap-2.5 p-2.5 rounded-xl border cursor-pointer transition-all ${
-                resolutionMode === 'unassign'
+              <label className={`flex items-start gap-2.5 p-2.5 rounded-xl border cursor-pointer transition-all ${resolutionMode === 'unassign'
                   ? 'border-indigo-500 bg-indigo-50/40 dark:bg-indigo-950/20 ring-1 ring-indigo-500'
                   : 'border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800/50'
-              }`}>
+                }`}>
                 <input
                   type="radio"
                   name="resolutionMode"
@@ -1034,11 +1267,10 @@ export default function TeacherList() {
               </label>
 
               {/* Option 2: Reassign */}
-              <label className={`flex items-start gap-2.5 p-2.5 rounded-xl border cursor-pointer transition-all ${
-                resolutionMode === 'reassign'
+              <label className={`flex items-start gap-2.5 p-2.5 rounded-xl border cursor-pointer transition-all ${resolutionMode === 'reassign'
                   ? 'border-indigo-500 bg-indigo-50/40 dark:bg-indigo-950/20 ring-1 ring-indigo-500'
                   : 'border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800/50'
-              }`}>
+                }`}>
                 <input
                   type="radio"
                   name="resolutionMode"

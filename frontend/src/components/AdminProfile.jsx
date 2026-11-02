@@ -507,6 +507,7 @@ export default function AdminProfile() {
         setIsEditing(false);
         setSuccessMessage('Administrator profile updated successfully.');
         setTimeout(() => setSuccessMessage(''), 4000);
+        window.dispatchEvent(new CustomEvent('admin-profile-updated', { detail: res.profile }));
       } else {
         setError(res?.error || 'Failed to update administrator profile');
         if (res?.errors) {

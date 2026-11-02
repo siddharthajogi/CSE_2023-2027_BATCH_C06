@@ -1,15 +1,15 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { NavLink, Outlet, useNavigate, useLocation, Link } from 'react-router-dom';
-import { 
-  LayoutDashboard, 
-  Users, 
-  UserPlus, 
-  GraduationCap, 
-  BookOpen, 
-  Settings, 
-  LogOut, 
-  Activity, 
-  FileText, 
+import {
+  LayoutDashboard,
+  Users,
+  User,
+  GraduationCap,
+  BookOpen,
+  Settings,
+  LogOut,
+  Activity,
+  FileText,
   Sun,
   Moon,
   Bell,
@@ -60,23 +60,11 @@ const isRouteActive = (itemPath, currentPath) => {
   if (itemPath === '/admin/dashboard') {
     return cleanPath === '/admin' || cleanPath === '/admin/dashboard';
   }
-  if (itemPath === '/admin/students/create') {
-    return cleanPath === '/admin/students/create';
-  }
   if (itemPath === '/admin/students') {
-    return (
-      cleanPath === '/admin/students' ||
-      (cleanPath.startsWith('/admin/students/') && cleanPath !== '/admin/students/create')
-    );
-  }
-  if (itemPath === '/admin/teachers/create') {
-    return cleanPath === '/admin/teachers/create';
+    return cleanPath === '/admin/students' || cleanPath.startsWith('/admin/students/');
   }
   if (itemPath === '/admin/teachers') {
-    return (
-      cleanPath === '/admin/teachers' ||
-      (cleanPath.startsWith('/admin/teachers/') && cleanPath !== '/admin/teachers/create')
-    );
+    return cleanPath === '/admin/teachers' || cleanPath.startsWith('/admin/teachers/');
   }
   if (itemPath === '/admin/classes') {
     return (
@@ -106,6 +94,111 @@ export default function AdminLayout({ onLogout, currentUser }) {
 
   // Notification Unread Count State
   const [unreadCount, setUnreadCount] = useState(0);
+
+  // Authenticated Admin Profile State for Header Avatar
+  const [adminProfile, setAdminProfile] = useState({
+    name: currentUser?.name || '',
+    profilePhoto: currentUser?.profilePhoto || ''
+  });
+
+  const syncAdminProfile = useCallback(async () => {
+    try {
+      const res = await adminApi.getAdminProfile();
+      if (res && res.success && res.profile) {
+        setAdminProfile({
+          name: res.profile.name || currentUser?.name || 'Administrator',
+          profilePhoto: res.profile.profilePhoto || ''
+        });
+      }
+    } catch (err) {
+      console.warn('Failed to fetch admin profile in header:', err);
+    }
+  }, [currentUser]);
+
+  // Synchronize on mount, custom event, storage update, and focus
+  useEffect(() => {
+    syncAdminProfile();
+    const handleProfileUpdate = (e) => {
+      if (e?.detail) {
+        setAdminProfile({
+          name: e.detail.name || 'Administrator',
+          profilePhoto: e.detail.profilePhoto || ''
+        });
+      } else {
+        syncAdminProfile();
+      }
+    };
+
+    window.addEventListener('admin-profile-updated', handleProfileUpdate);
+    window.addEventListener('storage', handleProfileUpdate);
+    window.addEventListener('focus', syncAdminProfile);
+
+    return () => {
+      window.removeEventListener('admin-profile-updated', handleProfileUpdate);
+      window.removeEventListener('storage', handleProfileUpdate);
+      window.removeEventListener('focus', syncAdminProfile);
+    };
+  }, [syncAdminProfile]);
+
+  // Ensure header avatar stays updated on navigation
+  useEffect(() => {
+    syncAdminProfile();
+  }, [location.pathname, syncAdminProfile]);
+
+  // Track previously visited admin page (non-profile) for avatar toggle navigation
+  const previousAdminPathRef = useRef(null);
+
+  useEffect(() => {
+    if (location.pathname && location.pathname !== '/admin/profile') {
+      const fullPath = location.pathname + location.search;
+      previousAdminPathRef.current = fullPath;
+      try {
+        sessionStorage.setItem('admin_previous_page', fullPath);
+      } catch {
+        // Quiet fail if storage is restricted
+      }
+    }
+  }, [location.pathname, location.search]);
+
+  const handleAvatarClick = (e) => {
+    e.preventDefault();
+
+    if (location.pathname === '/admin/profile') {
+      // Second click: Return to the previous page
+      if (location.state?.fromAvatarToggle && window.history.length > 1) {
+        navigate(-1);
+      } else {
+        let storedSessionPath = null;
+        try {
+          storedSessionPath = sessionStorage.getItem('admin_previous_page');
+        } catch {
+          // Ignore storage restrictions
+        }
+
+        const storedReturn =
+          location.state?.returnTo ||
+          previousAdminPathRef.current ||
+          storedSessionPath ||
+          '/admin/dashboard';
+
+        const safeReturn =
+          (storedReturn && storedReturn !== '/admin/profile')
+            ? storedReturn
+            : '/admin/dashboard';
+
+        navigate(safeReturn);
+      }
+    } else {
+      // First click: Open My Profile, preserving current route
+      const currentFull = location.pathname + location.search;
+      navigate('/admin/profile', {
+        state: {
+          returnTo: currentFull,
+          fromAvatarToggle: true
+        }
+      });
+    }
+  };
 
   // Theme Dropdown State
   const [isThemeOpen, setIsThemeOpen] = useState(false);
@@ -170,11 +263,9 @@ export default function AdminLayout({ onLogout, currentUser }) {
   }, [isThemeOpen]);
 
   const menuItems = [
-    { name: 'Dashboard', icon: LayoutDashboard, path: '/admin/dashboard' },
+    { name: 'Home', icon: LayoutDashboard, path: '/admin/dashboard' },
     { name: 'Manage Students', icon: Users, path: '/admin/students' },
-    { name: 'Add Student', icon: UserPlus, path: '/admin/students/create' },
     { name: 'Manage Teachers', icon: GraduationCap, path: '/admin/teachers' },
-    { name: 'Add Teacher', icon: UserPlus, path: '/admin/teachers/create' },
     { name: 'Departments & Sections', icon: BookOpen, path: '/admin/classes' },
     { name: 'Subjects', icon: BookOpen, path: '/admin/subjects' },
     { name: 'Academic Records', icon: FileText, path: '/admin/academic-records' },
@@ -182,7 +273,6 @@ export default function AdminLayout({ onLogout, currentUser }) {
     { name: 'Reports', icon: FileText, path: '/admin/reports' },
     { name: 'Activity Logs', icon: FileText, path: '/admin/activity-logs' },
     { name: 'Settings', icon: Settings, path: '/admin/settings' },
-    { name: 'My Profile', icon: Users, path: '/admin/profile' },
   ];
 
   const renderNavLinks = (closeMobile = false) => (
@@ -197,20 +287,18 @@ export default function AdminLayout({ onLogout, currentUser }) {
               if (closeMobile) setMobileMenuOpen(false);
             }}
             className={() =>
-              `group flex items-center justify-between px-3 py-2 text-xs sm:text-sm font-medium rounded-xl border-l-4 transition-all duration-150 ${
-                isActive
-                  ? 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-800 dark:text-indigo-300 font-semibold border-indigo-600 dark:border-indigo-500 shadow-2xs'
-                  : 'border-transparent text-slate-600 dark:text-slate-400 hover:bg-indigo-50/50 dark:hover:bg-indigo-950/30 hover:text-indigo-700 dark:hover:text-indigo-300'
+              `group flex items-center justify-between px-3 py-2 text-xs sm:text-sm font-medium rounded-xl border-l-4 transition-all duration-150 ${isActive
+                ? 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-800 dark:text-indigo-300 font-semibold border-indigo-600 dark:border-indigo-500 shadow-2xs'
+                : 'border-transparent text-slate-600 dark:text-slate-400 hover:bg-indigo-50/50 dark:hover:bg-indigo-950/30 hover:text-indigo-700 dark:hover:text-indigo-300'
               }`
             }
           >
             <div className="flex items-center gap-3">
               <item.icon
-                className={`w-4 h-4 sm:w-4.5 sm:h-4.5 shrink-0 transition-colors ${
-                  isActive
-                    ? 'text-indigo-600 dark:text-indigo-400'
-                    : 'text-slate-400 group-hover:text-indigo-600 dark:group-hover:text-indigo-400'
-                }`}
+                className={`w-4 h-4 sm:w-4.5 sm:h-4.5 shrink-0 transition-colors ${isActive
+                  ? 'text-indigo-600 dark:text-indigo-400'
+                  : 'text-slate-400 group-hover:text-indigo-600 dark:group-hover:text-indigo-400'
+                  }`}
               />
               <span>{item.name}</span>
             </div>
@@ -228,7 +316,7 @@ export default function AdminLayout({ onLogout, currentUser }) {
 
   return (
     <div className="flex h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors duration-200">
-      
+
       {/* Desktop & Tablet Sidebar */}
       <aside className="w-64 bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 flex-col hidden md:flex transition-colors duration-200 shrink-0">
         <div className="pt-7 pb-5 px-4 border-b border-slate-200 dark:border-slate-800 flex flex-col items-center justify-center text-center">
@@ -304,10 +392,10 @@ export default function AdminLayout({ onLogout, currentUser }) {
           </div>
         </div>
       )}
-      
+
       {/* Main Content Area with Header */}
       <main className="flex-1 flex flex-col overflow-hidden">
-        
+
         {/* Shared Top Header (Desktop & Mobile) */}
         <header className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-4 lg:px-8 py-3.5 flex justify-between items-center transition-colors duration-200 shrink-0">
           <div className="flex items-center gap-3">
@@ -335,11 +423,10 @@ export default function AdminLayout({ onLogout, currentUser }) {
             {/* 2. Top-Header Notifications Navigation Control */}
             <Link
               to="/admin/notifications"
-              className={`relative inline-flex items-center gap-2 px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl text-xs sm:text-sm font-medium transition-colors border cursor-pointer ${
-                location.pathname === '/admin/notifications'
-                  ? 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800 shadow-2xs font-semibold'
-                  : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100'
-              }`}
+              className={`relative inline-flex items-center gap-2 px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl text-xs sm:text-sm font-medium transition-colors border cursor-pointer ${location.pathname === '/admin/notifications'
+                ? 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800 shadow-2xs font-semibold'
+                : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100'
+                }`}
               title="Notifications"
               aria-label="Notifications"
             >
@@ -357,11 +444,10 @@ export default function AdminLayout({ onLogout, currentUser }) {
               <button
                 type="button"
                 onClick={() => setIsThemeOpen(prev => !prev)}
-                className={`inline-flex items-center gap-2 px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl text-xs sm:text-sm font-medium transition-colors border cursor-pointer ${
-                  isThemeOpen
-                    ? 'bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100 border-indigo-300 dark:border-indigo-700 shadow-2xs'
-                    : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100'
-                }`}
+                className={`inline-flex items-center gap-2 px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl text-xs sm:text-sm font-medium transition-colors border cursor-pointer ${isThemeOpen
+                  ? 'bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100 border-indigo-300 dark:border-indigo-700 shadow-2xs'
+                  : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100'
+                  }`}
                 title="Select Theme"
                 aria-label="Select Theme"
                 aria-haspopup="true"
@@ -378,7 +464,7 @@ export default function AdminLayout({ onLogout, currentUser }) {
 
               {/* Theme Dropdown Card */}
               {isThemeOpen && (
-                <div 
+                <div
                   className="absolute right-0 mt-2 w-44 bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-800 z-50 p-1.5 transition-all animate-in fade-in slide-in-from-top-2 focus:outline-none"
                   role="menu"
                   aria-orientation="vertical"
@@ -394,11 +480,10 @@ export default function AdminLayout({ onLogout, currentUser }) {
                       setTheme('light');
                       setIsThemeOpen(false);
                     }}
-                    className={`w-full flex items-center justify-between px-3 py-2 text-xs sm:text-sm rounded-xl transition-colors cursor-pointer ${
-                      theme === 'light'
-                        ? 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-400 font-semibold'
-                        : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100'
-                    }`}
+                    className={`w-full flex items-center justify-between px-3 py-2 text-xs sm:text-sm rounded-xl transition-colors cursor-pointer ${theme === 'light'
+                      ? 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-400 font-semibold'
+                      : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100'
+                      }`}
                     role="menuitem"
                   >
                     <div className="flex items-center gap-2.5">
@@ -417,11 +502,10 @@ export default function AdminLayout({ onLogout, currentUser }) {
                       setTheme('dark');
                       setIsThemeOpen(false);
                     }}
-                    className={`w-full flex items-center justify-between px-3 py-2 text-xs sm:text-sm rounded-xl transition-colors cursor-pointer ${
-                      theme === 'dark'
-                        ? 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-400 font-semibold'
-                        : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100'
-                    }`}
+                    className={`w-full flex items-center justify-between px-3 py-2 text-xs sm:text-sm rounded-xl transition-colors cursor-pointer ${theme === 'dark'
+                      ? 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-400 font-semibold'
+                      : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100'
+                      }`}
                     role="menuitem"
                   >
                     <div className="flex items-center gap-2.5">
@@ -436,9 +520,36 @@ export default function AdminLayout({ onLogout, currentUser }) {
               )}
             </div>
 
+            {/* Admin Profile Avatar at extreme right */}
+            <Link
+              to="/admin/profile"
+              onClick={handleAvatarClick}
+              className={`relative inline-flex items-center justify-center rounded-full transition-all hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer ${location.pathname === '/admin/profile'
+                ? 'ring-2 ring-indigo-500 ring-offset-2 ring-offset-white dark:ring-offset-slate-900'
+                : ''
+                }`}
+              title={location.pathname === '/admin/profile'
+                ? 'Return to previous page'
+                : (adminProfile.name ? `${adminProfile.name} (My Profile)` : 'Admin Profile')
+              }
+              aria-label={location.pathname === '/admin/profile' ? 'Return to previous page' : 'View Admin Profile'}
+            >
+              {adminProfile.profilePhoto ? (
+                <img
+                  src={adminProfile.profilePhoto}
+                  alt={adminProfile.name || 'Admin Profile'}
+                  className="w-9 h-9 sm:w-10 sm:h-10 rounded-full object-cover border-2 border-indigo-200 dark:border-indigo-800 shadow-xs"
+                />
+              ) : (
+                <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-gradient-to-tr from-indigo-600 to-indigo-700 text-white flex items-center justify-center border-2 border-indigo-200/50 dark:border-indigo-800/50 shadow-xs">
+                  <User className="w-5 h-5 text-white/90" />
+                </div>
+              )}
+            </Link>
+
             {/* Mobile Logout */}
-            <button 
-              onClick={handleLogout} 
+            <button
+              onClick={handleLogout}
               className="p-2 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-xl transition-colors md:hidden cursor-pointer"
               title="Logout"
               aria-label="Logout"
