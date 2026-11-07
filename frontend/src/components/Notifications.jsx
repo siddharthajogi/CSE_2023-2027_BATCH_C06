@@ -1,20 +1,20 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { 
-  Bell, 
-  Check, 
-  Trash2, 
-  ExternalLink, 
-  RefreshCw, 
-  Loader2, 
-  AlertCircle, 
-  Info, 
-  CheckCircle2, 
-  AlertTriangle, 
-  ShieldCheck, 
-  Users, 
-  GraduationCap, 
-  BookOpen, 
+import {
+  Bell,
+  Check,
+  Trash2,
+  ExternalLink,
+  RefreshCw,
+  Loader2,
+  AlertCircle,
+  Info,
+  CheckCircle2,
+  AlertTriangle,
+  ShieldCheck,
+  Users,
+  GraduationCap,
+  BookOpen,
   FileText,
   Clock,
   CheckSquare,
@@ -197,7 +197,7 @@ export default function Notifications() {
             body: JSON.stringify({ ids: pendingIds }),
             keepalive: true
           });
-        } catch (_) {}
+        } catch (_) { }
       }
     };
 
@@ -209,9 +209,9 @@ export default function Notifications() {
       pendingOps.forEach(op => {
         if (op.timerId) clearTimeout(op.timerId);
         if (op.type === 'single') {
-          adminApi.deleteNotification(op.id).catch(() => {});
+          adminApi.deleteNotification(op.id).catch(() => { });
         } else if (op.type === 'bulk') {
-          adminApi.bulkDeleteNotifications(op.ids).catch(() => {});
+          adminApi.bulkDeleteNotifications(op.ids).catch(() => { });
         }
       });
       pendingDeletionsRef.current.clear();
@@ -635,38 +635,86 @@ export default function Notifications() {
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-12 transition-colors duration-200">
-      
-      {/* 1. Overview Metric Cards */}
+
+      {/* 1. Overview Metric Cards (Interactive) */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-5">
-        <div className="bg-white dark:bg-slate-900 rounded-2xl p-5 sm:p-6 min-h-[105px] border border-slate-200 dark:border-slate-800 shadow-xs flex items-center justify-between">
+        <button
+          type="button"
+          onClick={() => { setStatusTab('all'); setCurrentPage(1); }}
+          aria-pressed={statusTab === 'all'}
+          aria-label="Filter by Total Notifications"
+          className={`rounded-2xl p-5 sm:p-6 min-h-[105px] flex items-center justify-between text-left transition-all duration-200 cursor-pointer focus:outline-hidden focus:ring-2 focus:ring-indigo-500/50 ${statusTab === 'all'
+              ? 'bg-indigo-50/60 dark:bg-indigo-950/40 border-2 border-indigo-500 dark:border-indigo-500 ring-2 ring-indigo-500/20 shadow-sm'
+              : 'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-indigo-300 dark:hover:border-indigo-700 hover:shadow-xs'
+            }`}
+        >
           <div>
-            <p className="text-xs font-medium text-slate-500 dark:text-slate-400">Total Notifications</p>
-            <p className="text-2xl font-extrabold text-slate-900 dark:text-slate-100 mt-1">{counts.total}</p>
+            <p className={`text-xs font-medium transition-colors ${statusTab === 'all' ? 'text-indigo-700 dark:text-indigo-300 font-semibold' : 'text-slate-500 dark:text-slate-400'}`}>
+              Total Notifications
+            </p>
+            <p className="text-2xl font-extrabold text-slate-900 dark:text-slate-100 mt-1">
+              {counts.total}
+            </p>
           </div>
-          <div className="p-3 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400">
+          <div className={`p-3 rounded-xl transition-colors ${statusTab === 'all'
+              ? 'bg-indigo-600 text-white shadow-xs'
+              : 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400'
+            }`}>
             <Bell className="w-5 h-5" />
           </div>
-        </div>
+        </button>
 
-        <div className="bg-white dark:bg-slate-900 rounded-2xl p-5 sm:p-6 min-h-[105px] border border-slate-200 dark:border-slate-800 shadow-xs flex items-center justify-between">
+        <button
+          type="button"
+          onClick={() => { setStatusTab('unread'); setCurrentPage(1); }}
+          aria-pressed={statusTab === 'unread'}
+          aria-label="Filter by Unread Alerts"
+          className={`rounded-2xl p-5 sm:p-6 min-h-[105px] flex items-center justify-between text-left transition-all duration-200 cursor-pointer focus:outline-hidden focus:ring-2 focus:ring-rose-500/50 ${statusTab === 'unread'
+              ? 'bg-rose-50/60 dark:bg-rose-950/40 border-2 border-rose-500 dark:border-rose-500 ring-2 ring-rose-500/20 shadow-sm'
+              : 'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-rose-300 dark:hover:border-rose-700 hover:shadow-xs'
+            }`}
+        >
           <div>
-            <p className="text-xs font-medium text-slate-500 dark:text-slate-400">Unread Alerts</p>
-            <p className="text-2xl font-extrabold text-rose-600 dark:text-rose-400 mt-1">{counts.unread}</p>
+            <p className={`text-xs font-medium transition-colors ${statusTab === 'unread' ? 'text-rose-700 dark:text-rose-300 font-semibold' : 'text-slate-500 dark:text-slate-400'}`}>
+              Unread Alerts
+            </p>
+            <p className="text-2xl font-extrabold text-rose-600 dark:text-rose-400 mt-1">
+              {counts.unread}
+            </p>
           </div>
-          <div className="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400">
+          <div className={`p-3 rounded-xl transition-colors ${statusTab === 'unread'
+              ? 'bg-rose-600 text-white shadow-xs'
+              : 'bg-rose-50 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400'
+            }`}>
             <AlertCircle className="w-5 h-5" />
           </div>
-        </div>
+        </button>
 
-        <div className="bg-white dark:bg-slate-900 rounded-2xl p-5 sm:p-6 min-h-[105px] border border-slate-200 dark:border-slate-800 shadow-xs flex items-center justify-between">
+        <button
+          type="button"
+          onClick={() => { setStatusTab('read'); setCurrentPage(1); }}
+          aria-pressed={statusTab === 'read'}
+          aria-label="Filter by Read & Acknowledged"
+          className={`rounded-2xl p-5 sm:p-6 min-h-[105px] flex items-center justify-between text-left transition-all duration-200 cursor-pointer focus:outline-hidden focus:ring-2 focus:ring-emerald-500/50 ${statusTab === 'read'
+              ? 'bg-emerald-50/60 dark:bg-emerald-950/40 border-2 border-emerald-500 dark:border-emerald-500 ring-2 ring-emerald-500/20 shadow-sm'
+              : 'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-emerald-300 dark:hover:border-emerald-700 hover:shadow-xs'
+            }`}
+        >
           <div>
-            <p className="text-xs font-medium text-slate-500 dark:text-slate-400">Read & Acknowledged</p>
-            <p className="text-2xl font-extrabold text-emerald-600 dark:text-emerald-400 mt-1">{counts.read}</p>
+            <p className={`text-xs font-medium transition-colors ${statusTab === 'read' ? 'text-emerald-700 dark:text-emerald-300 font-semibold' : 'text-slate-500 dark:text-slate-400'}`}>
+              Read & Acknowledged
+            </p>
+            <p className="text-2xl font-extrabold text-emerald-600 dark:text-emerald-400 mt-1">
+              {counts.read}
+            </p>
           </div>
-          <div className="p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400">
+          <div className={`p-3 rounded-xl transition-colors ${statusTab === 'read'
+              ? 'bg-emerald-600 text-white shadow-xs'
+              : 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400'
+            }`}>
             <CheckCircle2 className="w-5 h-5" />
           </div>
-        </div>
+        </button>
       </div>
 
       {/* Feedback Messages */}
@@ -692,54 +740,10 @@ export default function Notifications() {
         </div>
       )}
 
-      {/* 2. Filter Navigation (Tabs, Category Filters, & Select All) */}
-      <div className="bg-white dark:bg-slate-900 rounded-2xl p-4 border border-slate-200 dark:border-slate-800 shadow-xs space-y-3">
-        {/* Status Tabs (Top-Left) */}
-        <div className="pb-3 border-b border-slate-100 dark:border-slate-800">
-          <div className="inline-flex p-1 bg-slate-100 dark:bg-slate-800 rounded-xl">
-            <button
-              onClick={() => { setStatusTab('all'); setCurrentPage(1); }}
-              type="button"
-              className={`px-3 sm:px-4 py-1.5 text-xs font-semibold rounded-lg transition-all ${
-                statusTab === 'all'
-                  ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-xs'
-                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
-              }`}
-            >
-              All
-            </button>
-            <button
-              onClick={() => { setStatusTab('unread'); setCurrentPage(1); }}
-              type="button"
-              className={`inline-flex items-center gap-1.5 px-3 sm:px-4 py-1.5 text-xs font-semibold rounded-lg transition-all ${
-                statusTab === 'unread'
-                  ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-xs'
-                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
-              }`}
-            >
-              <span>Unread</span>
-              {counts.unread > 0 && (
-                <span className="px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-rose-500 text-white">
-                  {counts.unread}
-                </span>
-              )}
-            </button>
-            <button
-              onClick={() => { setStatusTab('read'); setCurrentPage(1); }}
-              type="button"
-              className={`px-3 sm:px-4 py-1.5 text-xs font-semibold rounded-lg transition-all ${
-                statusTab === 'read'
-                  ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-xs'
-                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
-              }`}
-            >
-              Read
-            </button>
-          </div>
-        </div>
-
-        {/* Category Pills & Bottom-Right Action Controls */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-0.5">
+      {/* 2. Filter Navigation (Category Filters & Action Controls) */}
+      <div className="bg-white dark:bg-slate-900 rounded-2xl p-4 border border-slate-200 dark:border-slate-800 shadow-xs">
+        {/* Category Pills & Action Controls */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           {/* Category Filter Buttons (Left) */}
           <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none flex-1 min-w-0">
             {CATEGORIES.map(cat => {
@@ -750,11 +754,10 @@ export default function Notifications() {
                   key={cat.id}
                   onClick={() => { setSelectedCategory(cat.id); setCurrentPage(1); }}
                   type="button"
-                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all border shrink-0 ${
-                    isSelected
+                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all border shrink-0 cursor-pointer ${isSelected
                       ? 'bg-indigo-50 dark:bg-indigo-950/70 border-indigo-200 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300 shadow-xs'
                       : 'bg-slate-50 dark:bg-slate-800/40 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-200'
-                  }`}
+                    }`}
                 >
                   <Icon className="w-3.5 h-3.5" />
                   <span>{cat.label}</span>
@@ -772,11 +775,10 @@ export default function Notifications() {
                   onClick={handleBulkMarkAsRead}
                   disabled={bulkActionLoading || !hasUnreadSelected}
                   type="button"
-                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs sm:text-sm font-semibold transition-colors shadow-xs ${
-                    !hasUnreadSelected || bulkActionLoading
+                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs sm:text-sm font-semibold transition-colors shadow-xs ${!hasUnreadSelected || bulkActionLoading
                       ? 'bg-slate-200 dark:bg-slate-800 text-slate-400 dark:text-slate-500 cursor-not-allowed border border-slate-300 dark:border-slate-700'
                       : 'bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer'
-                  }`}
+                    }`}
                   title={
                     !hasUnreadSelected
                       ? 'No selected notifications are unread'
@@ -846,12 +848,20 @@ export default function Notifications() {
               <Bell className="w-7 h-7" />
             </div>
             <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">
-              No notifications found
+              {statusTab === 'unread'
+                ? 'No unread alerts'
+                : statusTab === 'read'
+                  ? 'No read notifications'
+                  : selectedCategory !== 'all'
+                    ? `No notifications in ${getCategoryDisplayName(selectedCategory)}`
+                    : 'No notifications found'}
             </h3>
             <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-1 max-w-md mx-auto">
               {statusTab === 'unread'
                 ? "You're all caught up! No unread notifications require your attention."
-                : 'No notifications match the current filters. Notifications are generated in real-time as administrative events occur.'}
+                : statusTab === 'read'
+                  ? 'No notifications have been marked as read or acknowledged yet.'
+                  : 'No notifications match the current filters. Notifications are generated in real-time as administrative events occur.'}
             </p>
           </div>
         ) : (
@@ -865,13 +875,12 @@ export default function Notifications() {
               <div
                 key={item._id}
                 onClick={() => handleNotificationClick(item)}
-                className={`group relative bg-white dark:bg-slate-900 rounded-2xl p-4.5 sm:p-5 sm:p-6 border transition-all duration-150 cursor-pointer ${
-                  isSelected
+                className={`group relative bg-white dark:bg-slate-900 rounded-2xl p-4.5 sm:p-5 sm:p-6 border transition-all duration-150 cursor-pointer ${isSelected
                     ? 'border-indigo-500 dark:border-indigo-500 ring-2 ring-indigo-500/30 dark:ring-indigo-500/20 bg-indigo-50/30 dark:bg-indigo-950/30 shadow-xs'
                     : !item.isRead
-                    ? 'border-indigo-200 dark:border-indigo-900/60 bg-indigo-50/20 dark:bg-indigo-950/20 shadow-xs'
-                    : 'border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-xs'
-                }`}
+                      ? 'border-indigo-200 dark:border-indigo-900/60 bg-indigo-50/20 dark:bg-indigo-950/20 shadow-xs'
+                      : 'border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-xs'
+                  }`}
               >
                 <div className="flex items-start gap-3 sm:gap-4">
                   {/* Card Checkbox */}
@@ -929,11 +938,10 @@ export default function Notifications() {
                       )}
                     </div>
 
-                    <h3 className={`text-sm sm:text-base font-bold ${
-                      !item.isRead 
-                        ? 'text-slate-900 dark:text-slate-100' 
+                    <h3 className={`text-sm sm:text-base font-bold ${!item.isRead
+                        ? 'text-slate-900 dark:text-slate-100'
                         : 'text-slate-700 dark:text-slate-300'
-                    }`}>
+                      }`}>
                       {item.title}
                     </h3>
 

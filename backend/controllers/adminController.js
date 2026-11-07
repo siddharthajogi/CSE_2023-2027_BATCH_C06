@@ -172,6 +172,13 @@ exports.getDashboardStats = async (req, res) => {
     const totalStudents = await StudentProfile.countDocuments({ institution: institutionId });
     const totalTeachers = await TeacherProfile.countDocuments({ institution: institutionId });
 
+    // Enrolled students strictly belonging to active institution in configured classes
+    const enrolledStudents = (await StudentProfile.distinct('_id', {
+      institution: institutionId,
+      classRef: { $in: await Class.find({ institution: institutionId }).distinct('_id') }
+    })).length;
+    const unassignedStudents = Math.max(0, totalStudents - enrolledStudents);
+
     // Active accounts across all three roles strictly belonging to the active institution:
     // 1. Active student accounts
     const activeStudents = await User.countDocuments({
@@ -227,6 +234,8 @@ exports.getDashboardStats = async (req, res) => {
       success: true,
       stats: {
         totalStudents,
+        enrolledStudents,
+        unassignedStudents,
         totalTeachers,
         activeAccounts,
         activeStudents,
@@ -2009,11 +2018,42 @@ exports.createStudent = async (req, res) => {
 
 exports.getStudents = async (req, res) => {
   try {
-    const students = await StudentProfile.find({ institution: req.currentUser.institution._id })
+    const institutionId = req.currentUser.institution._id;
+    const students = await StudentProfile.find({ institution: institutionId })
       .populate('user', 'userId name role isActive createdAt mustChangePassword')
       .populate('classRef', 'name section course department academicYear semester yearOfStudy isActive')
       .populate('departmentRef', 'name code');
-    res.status(200).json({ success: true, students });
+
+    const validClassIds = await Class.find({ institution: institutionId }).distinct('_id');
+    const validClassIdStrings = new Set(validClassIds.map(id => id.toString()));
+
+    const totalStudents = students.length;
+    let activeStudents = 0;
+    let enrolledStudents = 0;
+
+    students.forEach(s => {
+      if (s.user && s.user.isActive) {
+        activeStudents++;
+      }
+      if (s.classRef && validClassIdStrings.has(s.classRef._id ? s.classRef._id.toString() : s.classRef.toString())) {
+        enrolledStudents++;
+      }
+    });
+
+    const inactiveStudents = totalStudents - activeStudents;
+    const unassignedStudents = totalStudents - enrolledStudents;
+
+    res.status(200).json({
+      success: true,
+      students,
+      counts: {
+        totalStudents,
+        activeStudents,
+        inactiveStudents,
+        enrolledStudents,
+        unassignedStudents
+      }
+    });
   } catch (error) {
     res.status(500).json({ success: false, error: 'Failed to fetch students' });
   }
@@ -3159,10 +3199,14 @@ exports.getClasses = async (req, res) => {
       classRef: { $in: classIds }
     });
 
+    const totalStudentsCount = await StudentProfile.countDocuments({ institution: institutionId });
+
     res.status(200).json({
       success: true,
       classes: enrichedClasses,
-      totalEnrolledStudents: enrolledStudentIds.length
+      totalEnrolledStudents: enrolledStudentIds.length,
+      totalStudents: totalStudentsCount,
+      unassignedStudents: Math.max(0, totalStudentsCount - enrolledStudentIds.length)
     });
   } catch (error) {
     console.error('getClasses error:', error);

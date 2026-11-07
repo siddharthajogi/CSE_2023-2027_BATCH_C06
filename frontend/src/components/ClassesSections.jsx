@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { adminApi } from '../api';
 import { usePageRefresh } from '../context/RefreshContext';
 import {
@@ -20,6 +20,7 @@ import {
   Loader2,
   Sparkles,
   RefreshCw,
+  RotateCcw,
   SlidersHorizontal,
   ChevronRight,
   UserCheck,
@@ -29,15 +30,17 @@ import {
   ShieldCheck,
   UserPlus,
   Pencil,
-  AlertTriangle
+  AlertTriangle,
+  MoreVertical,
+  Eye
 } from 'lucide-react';
 
 // Academic years of study in canonical order
 const ACADEMIC_YEARS_ORDER = [
-  { id: 'First Year', label: 'First Year', defaultSemesters: ['1st', '2nd'] },
-  { id: 'Second Year', label: 'Second Year', defaultSemesters: ['3rd', '4th'] },
-  { id: 'Third Year', label: 'Third Year', defaultSemesters: ['5th', '6th'] },
-  { id: 'Fourth Year', label: 'Fourth Year', defaultSemesters: ['7th', '8th'] },
+  { id: 'First Year', label: 'First Year', order: 1, defaultSemesters: ['1st', '2nd'] },
+  { id: 'Second Year', label: 'Second Year', order: 2, defaultSemesters: ['3rd', '4th'] },
+  { id: 'Third Year', label: 'Third Year', order: 3, defaultSemesters: ['5th', '6th'] },
+  { id: 'Fourth Year', label: 'Fourth Year', order: 4, defaultSemesters: ['7th', '8th'] },
 ];
 
 // Helper to calculate assignment metrics and status consistently
@@ -84,6 +87,7 @@ export const calculateAssignmentMetrics = (assignments = []) => {
 };
 
 export default function ClassesSections() {
+  const navigate = useNavigate();
   const [classes, setClasses] = useState([]);
   const [totalEnrolledStudents, setTotalEnrolledStudents] = useState(0);
   const [subjects, setSubjects] = useState([]);
@@ -95,11 +99,13 @@ export default function ClassesSections() {
   const [error, setError] = useState('');
   const [actionSuccess, setActionSuccess] = useState('');
 
-  // Top Summary Card Filter & Search State
-  // summaryFilter: 'all' | 'assigned' | 'not_assigned' | 'pending' | 'enrolled'
-  const [summaryFilter, setSummaryFilter] = useState('all');
+  // Search & Filter Toolbar State
   const [searchTerm, setSearchTerm] = useState('');
+  const [yearFilter, setYearFilter] = useState('all');
   const [departmentFilter, setDepartmentFilter] = useState('all');
+
+  // Summary Card Filter State: 'all' | 'assigned' | 'not_assigned'
+  const [cardFilter, setCardFilter] = useState('all');
 
   // Modal State: Manage Group Assignments
   const [selectedGroup, setSelectedGroup] = useState(null);
@@ -114,6 +120,9 @@ export default function ClassesSections() {
   const [viewingSectionStudents, setViewingSectionStudents] = useState(null);
   const [sectionStudentsLoading, setSectionStudentsLoading] = useState(false);
   const [sectionStudentSearch, setSectionStudentSearch] = useState('');
+
+  // Three-dot dropdown menu active state
+  const [activeDropdownSectionId, setActiveDropdownSectionId] = useState(null);
 
   // Modal State: Add Department (Task 4)
   const [addDeptModal, setAddDeptModal] = useState({
@@ -241,6 +250,17 @@ export default function ClassesSections() {
     loadData();
   }, []);
 
+  // Close three-dot section menu when clicking outside
+  useEffect(() => {
+    const handleOutsideClick = (e) => {
+      if (!e.target.closest('[data-section-menu]')) {
+        setActiveDropdownSectionId(null);
+      }
+    };
+    document.addEventListener('click', handleOutsideClick);
+    return () => document.removeEventListener('click', handleOutsideClick);
+  }, []);
+
   // Filter active subjects & active teachers
   const activeSubjects = subjects.filter(s => s.isActive !== false);
   const activeTeachers = teachers.filter(t => t.user?.isActive !== false);
@@ -268,25 +288,66 @@ export default function ClassesSections() {
     };
   };
 
-  // --- Task 1: Summary Counts from actual MongoDB records ---
+  // Helper to determine if a section is fully assigned
+  const isSectionFullyAssigned = (c) => {
+    const metrics = calculateAssignmentMetrics(c.assignments);
+    const status = c.status || metrics.status;
+    return status === 'Assigned';
+  };
+
+  // --- Summary Counts from actual MongoDB records ---
   const totalGroupsCount = classes.length;
-  const assignedGroupsCount = classes.filter(c => c.status === 'Assigned' || (!c.hasPendingAssignments && c.status !== 'Not Assigned')).length;
-  const notAssignedGroupsCount = classes.filter(c => c.status === 'Not Assigned' || c.hasPendingAssignments).length;
+  const assignedGroupsCount = useMemo(() => {
+    return classes.filter(isSectionFullyAssigned).length;
+  }, [classes]);
+  const notAssignedGroupsCount = useMemo(() => {
+    return classes.length - assignedGroupsCount;
+  }, [classes, assignedGroupsCount]);
   const enrolledStudentsCount = totalEnrolledStudents;
 
-  // Handle clicking summary cards (Task 1)
-  const handleSummaryCardClick = (filterType) => {
-    if (summaryFilter === filterType) {
-      setSummaryFilter('all'); // toggle off if already active
-    } else {
-      setSummaryFilter(filterType);
+  // Academic year options for dropdown: strictly academic study level (no calendar years)
+  const ACADEMIC_YEAR_OPTIONS = ['First Year', 'Second Year', 'Third Year', 'Fourth Year'];
+
+  // Deduplicated unique departments from database
+  const uniqueDepartments = useMemo(() => {
+    const seen = new Set();
+    const list = [];
+    (departments || []).forEach(d => {
+      if (!d) return;
+      const name = (d.name || '').trim();
+      if (name && !seen.has(name.toLowerCase())) {
+        seen.add(name.toLowerCase());
+        list.push(d);
+      }
+    });
+    return list.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+  }, [departments]);
+
+  // Handle Summary Card Clicks
+  const handleCardClick = (filterType) => {
+    if (filterType === 'all') {
+      setCardFilter('all');
+    } else if (filterType === 'enrolled') {
+      navigate('/admin/students');
+    } else if (filterType === 'assigned') {
+      setCardFilter('assigned');
+    } else if (filterType === 'not_assigned') {
+      setCardFilter('not_assigned');
     }
+  };
+
+  // Reset all search and filter conditions immediately
+  const handleResetAllFilters = () => {
+    setSearchTerm('');
+    setYearFilter('all');
+    setDepartmentFilter('all');
+    setCardFilter('all');
   };
 
   // --- Filter Classes based on Search and Filter Criteria ---
   const filteredClasses = useMemo(() => {
     return classes.filter(c => {
-      // 1. Search filter
+      // 1. Search filter: search department names, section names, and program names
       const term = searchTerm.toLowerCase().trim();
       const matchesSearch = !term ||
         (c.name || '').toLowerCase().includes(term) ||
@@ -297,14 +358,23 @@ export default function ClassesSections() {
         (c.academicYear || '').toLowerCase().includes(term) ||
         (c.yearOfStudy || '').toLowerCase().includes(term);
 
-      // 2. Summary card interactive filter
-      let matchesSummary = true;
-      if (summaryFilter === 'assigned') {
-        matchesSummary = c.status === 'Assigned' || (!c.hasPendingAssignments && c.status !== 'Not Assigned');
-      } else if (summaryFilter === 'not_assigned' || summaryFilter === 'pending') {
-        matchesSummary = c.status === 'Not Assigned' || c.hasPendingAssignments;
-      } else if (summaryFilter === 'enrolled') {
-        matchesSummary = (c.studentCount || 0) > 0;
+      // 2. Academic Year dropdown filter (study year level)
+      let matchesYear = true;
+      if (yearFilter && yearFilter !== 'all') {
+        const cleanYear = yearFilter.trim().toLowerCase();
+        const cStudyYear = (c.yearOfStudy || '').trim().toLowerCase();
+        const cAcadYear = (c.academicYear || '').trim().toLowerCase();
+        const cSem = String(c.semester || '').trim().toLowerCase();
+
+        if (cleanYear === 'first year') {
+          matchesYear = cStudyYear === 'first year' || cSem === '1st' || cSem === '2nd' || cAcadYear === 'first year';
+        } else if (cleanYear === 'second year') {
+          matchesYear = cStudyYear === 'second year' || cSem === '3rd' || cSem === '4th' || cAcadYear === 'second year';
+        } else if (cleanYear === 'third year') {
+          matchesYear = cStudyYear === 'third year' || cSem === '5th' || cSem === '6th' || cAcadYear === 'third year';
+        } else if (cleanYear === 'fourth year') {
+          matchesYear = cStudyYear === 'fourth year' || cSem === '7th' || cSem === '8th' || cAcadYear === 'fourth year';
+        }
       }
 
       // 3. Department dropdown filter
@@ -312,16 +382,36 @@ export default function ClassesSections() {
         c.department === departmentFilter ||
         departments.some(d => d.code === departmentFilter && (c.department === d.name || c.department === d.code));
 
-      return matchesSearch && matchesSummary && matchesDept;
+      // 4. Summary Card interactive filter
+      let matchesCard = true;
+      if (cardFilter === 'assigned') {
+        matchesCard = isSectionFullyAssigned(c);
+      } else if (cardFilter === 'not_assigned') {
+        matchesCard = !isSectionFullyAssigned(c);
+      } else if (cardFilter === 'enrolled') {
+        matchesCard = (c.studentCount || 0) > 0;
+      }
+
+      return matchesSearch && matchesYear && matchesDept && matchesCard;
     });
-  }, [classes, searchTerm, summaryFilter, departmentFilter, departments]);
+  }, [classes, searchTerm, yearFilter, departmentFilter, cardFilter, departments]);
 
   // --- Task 2 & Task 3: Build Academic Hierarchy ---
   // Structure: 4 Academic Years -> Departments configured for that year -> Inner Sections Grid
   const academicYearHierarchy = useMemo(() => {
     return ACADEMIC_YEARS_ORDER.map(yearMeta => {
       // Find all sections belonging to this year of study
-      const yearSections = filteredClasses.filter(c => c.yearOfStudy === yearMeta.id);
+      const yearSections = filteredClasses.filter(c => {
+        if (c.yearOfStudy === yearMeta.id) return true;
+        if (!c.yearOfStudy) {
+          const s = String(c.semester || '').toLowerCase();
+          if (yearMeta.id === 'First Year' && (s === '1st' || s === '2nd')) return true;
+          if (yearMeta.id === 'Second Year' && (s === '3rd' || s === '4th')) return true;
+          if (yearMeta.id === 'Third Year' && (s === '5th' || s === '6th')) return true;
+          if (yearMeta.id === 'Fourth Year' && (s === '7th' || s === '8th')) return true;
+        }
+        return false;
+      });
 
       // Group sections by department inside this year
       const deptMap = {};
@@ -377,8 +467,17 @@ export default function ClassesSections() {
     });
   }, [filteredClasses, departments]);
 
-  // --- Tasks 3, 4, 5: View Section Details (Assignments & Students) ---
-  const handleOpenSectionStudents = async (section) => {
+  // Displayed Academic Hierarchy filtered by selected academic year level
+  const displayedHierarchy = useMemo(() => {
+    if (!yearFilter || yearFilter === 'all') {
+      return academicYearHierarchy;
+    }
+    const cleanYear = yearFilter.trim().toLowerCase();
+    return academicYearHierarchy.filter(y => y.id.toLowerCase() === cleanYear);
+  }, [academicYearHierarchy, yearFilter]);
+
+  // --- Tasks 3, 4, 5: View Section Details (Assignments, Students, Subjects, Teachers) ---
+  const handleOpenSectionStudents = async (section, initialTab = 'overview') => {
     const initialAssignments = section.assignments || [];
     const initialMetrics = calculateAssignmentMetrics(initialAssignments);
     setViewingSectionStudents({
@@ -390,6 +489,7 @@ export default function ClassesSections() {
       subjectsCount: section.subjectsCount !== undefined ? section.subjectsCount : initialMetrics.subjectsCount,
       teachersCount: section.teachersCount !== undefined ? section.teachersCount : initialMetrics.teachersCount,
       status: section.status || initialMetrics.status,
+      activeTab: initialTab,
       isOpen: true
     });
     setSectionStudentSearch('');
@@ -400,7 +500,8 @@ export default function ClassesSections() {
       if (res.success && res.class) {
         const fetchedClass = res.class;
         const fetchedMetrics = calculateAssignmentMetrics(fetchedClass.assignments);
-        setViewingSectionStudents({
+        setViewingSectionStudents(prev => ({
+          ...prev,
           section: fetchedClass,
           students: fetchedClass.students || [],
           assignments: fetchedClass.assignments || [],
@@ -410,7 +511,7 @@ export default function ClassesSections() {
           teachersCount: fetchedClass.teachersCount !== undefined ? fetchedClass.teachersCount : fetchedMetrics.teachersCount,
           status: fetchedClass.status || fetchedMetrics.status,
           isOpen: true
-        });
+        }));
       }
     } catch (err) {
       console.error('Failed to fetch section details:', err);
@@ -745,6 +846,62 @@ export default function ClassesSections() {
     });
   }, [viewingSectionStudents, sectionStudentSearch]);
 
+  // Distinct subjects assigned to this section
+  const modalDistinctSubjects = useMemo(() => {
+    if (!viewingSectionStudents || !viewingSectionStudents.assignments) return [];
+    const seen = new Set();
+    const list = [];
+    viewingSectionStudents.assignments.forEach(asgn => {
+      const sub = asgn.subject;
+      if (!sub) return;
+      const key = String(sub._id || sub.code || sub.name);
+      if (!seen.has(key)) {
+        seen.add(key);
+        list.push({
+          _id: sub._id,
+          code: sub.code || '—',
+          name: sub.name || 'Unnamed Subject',
+          subjectType: sub.subjectType || 'Theory',
+          credits: sub.credits !== undefined ? sub.credits : '—',
+          teacherName: asgn.teacher?.user?.name || asgn.teacher?.personalInfo?.name || asgn.teacher?.teacherId || 'Unassigned',
+          status: asgn.isActive !== false ? 'Active' : 'Inactive'
+        });
+      }
+    });
+    return list;
+  }, [viewingSectionStudents]);
+
+  // Distinct teachers assigned to this section
+  const modalDistinctTeachers = useMemo(() => {
+    if (!viewingSectionStudents || !viewingSectionStudents.assignments) return [];
+    const teacherMap = new Map();
+    viewingSectionStudents.assignments.forEach(asgn => {
+      const tch = asgn.teacher;
+      if (!tch) return;
+      const key = String(tch._id || tch.teacherId || tch.user?.userId || tch.user?.name);
+      const subName = asgn.subject?.name
+        ? `${asgn.subject.name}${asgn.subject.code ? ` (${asgn.subject.code})` : ''}`
+        : (asgn.subject?.code || 'Assigned Subject');
+      if (teacherMap.has(key)) {
+        const existing = teacherMap.get(key);
+        if (!existing.subjects.includes(subName)) {
+          existing.subjects.push(subName);
+        }
+      } else {
+        teacherMap.set(key, {
+          _id: tch._id,
+          teacherId: tch.teacherId || tch.user?.userId || 'N/A',
+          name: tch.user?.name || tch.personalInfo?.name || tch.name || 'Unnamed Faculty',
+          designation: tch.designation || tch.professionalInfo?.designation || 'Faculty Member',
+          department: tch.department || 'N/A',
+          subjects: [subName],
+          status: tch.user?.isActive !== false ? 'Active' : 'Inactive'
+        });
+      }
+    });
+    return Array.from(teacherMap.values());
+  }, [viewingSectionStudents]);
+
   // --- Task 7: Manage Assignments Modal ---
   const openGroupModal = async (group) => {
     setModalError('');
@@ -1007,29 +1164,18 @@ export default function ClassesSections() {
         </div>
       )}
 
-      {/* Overview Metrics & Controls */}
+      {/* Four Interactive Summary Cards: Total Groups -> Enrolled Students -> Fully Assigned -> Not Assigned */}
       <div>
-        {summaryFilter !== 'all' && (
-          <div className="flex items-center justify-start gap-2.5 mb-3">
-            <button
-              onClick={() => setSummaryFilter('all')}
-              type="button"
-              className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline font-semibold cursor-pointer"
-            >
-              Reset Card Filter
-            </button>
-          </div>
-        )}
-
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5">
           {/* Card 1: Total Groups */}
           <button
             type="button"
-            onClick={() => handleSummaryCardClick('all')}
-            className={`text-left p-5 sm:p-6 rounded-2xl border min-h-[118px] flex flex-col justify-between transition-all duration-200 cursor-pointer ${
-              summaryFilter === 'all'
-                ? 'bg-white dark:bg-slate-900 border-indigo-500 ring-2 ring-indigo-500/20 shadow-md'
-                : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 hover:border-indigo-300 dark:hover:border-indigo-800 shadow-xs'
+            onClick={() => handleCardClick('all')}
+            aria-pressed={cardFilter === 'all'}
+            className={`p-5 sm:p-6 rounded-2xl min-h-[118px] flex flex-col justify-between text-left transition-all duration-200 cursor-pointer focus:outline-hidden focus:ring-2 focus:ring-indigo-500/50 ${
+              cardFilter === 'all'
+                ? 'bg-indigo-50/40 dark:bg-indigo-950/30 border-2 border-indigo-500 dark:border-indigo-500 ring-2 ring-indigo-500/20 shadow-sm'
+                : 'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-indigo-300 dark:hover:border-indigo-700/60 hover:shadow-xs'
             }`}
           >
             <div className="flex items-center justify-between">
@@ -1046,20 +1192,40 @@ export default function ClassesSections() {
               </span>
               <span className="text-xs text-slate-500 dark:text-slate-400">sections</span>
             </div>
-            <div className="mt-2 flex items-center gap-1.5 text-xs text-indigo-600 dark:text-indigo-400 font-medium">
-              <span>{summaryFilter === 'all' ? 'Active: Showing all' : 'Click to view all'}</span>
-              <ChevronRight className="w-3.5 h-3.5" />
+          </button>
+
+          {/* Card 2: Enrolled Students */}
+          <button
+            type="button"
+            onClick={() => handleCardClick('enrolled')}
+            aria-label="View Enrolled Students in Manage Students"
+            className="p-5 sm:p-6 rounded-2xl min-h-[118px] flex flex-col justify-between text-left transition-all duration-200 cursor-pointer focus:outline-hidden focus:ring-2 focus:ring-purple-500/50 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-purple-300 dark:hover:border-purple-700/60 hover:shadow-xs"
+          >
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                Enrolled Students
+              </span>
+              <div className="p-2 bg-purple-50 dark:bg-purple-950/60 text-purple-600 dark:text-purple-400 rounded-xl">
+                <Users className="w-5 h-5" />
+              </div>
+            </div>
+            <div className="mt-2.5 flex items-baseline gap-2">
+              <span className="text-2xl sm:text-3xl font-extrabold text-purple-600 dark:text-purple-400">
+                {enrolledStudentsCount}
+              </span>
+              <span className="text-xs text-slate-500 dark:text-slate-400">actual enrolled</span>
             </div>
           </button>
 
-          {/* Card 2: Fully Assigned */}
+          {/* Card 3: Fully Assigned */}
           <button
             type="button"
-            onClick={() => handleSummaryCardClick('assigned')}
-            className={`text-left p-5 rounded-2xl border transition-all duration-200 cursor-pointer ${
-              summaryFilter === 'assigned'
-                ? 'bg-emerald-50/40 dark:bg-emerald-950/20 border-emerald-500 ring-2 ring-emerald-500/20 shadow-md'
-                : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 hover:border-emerald-300 dark:hover:border-emerald-800 shadow-xs'
+            onClick={() => handleCardClick('assigned')}
+            aria-pressed={cardFilter === 'assigned'}
+            className={`p-5 sm:p-6 rounded-2xl min-h-[118px] flex flex-col justify-between text-left transition-all duration-200 cursor-pointer focus:outline-hidden focus:ring-2 focus:ring-emerald-500/50 ${
+              cardFilter === 'assigned'
+                ? 'bg-emerald-50/40 dark:bg-emerald-950/30 border-2 border-emerald-500 dark:border-emerald-500 ring-2 ring-emerald-500/20 shadow-sm'
+                : 'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-emerald-300 dark:hover:border-emerald-700/60 hover:shadow-xs'
             }`}
           >
             <div className="flex items-center justify-between">
@@ -1076,20 +1242,17 @@ export default function ClassesSections() {
               </span>
               <span className="text-xs text-slate-500 dark:text-slate-400">active curriculum</span>
             </div>
-            <div className="mt-2 flex items-center gap-1.5 text-xs text-emerald-600 dark:text-emerald-400 font-medium">
-              <span>{summaryFilter === 'assigned' ? 'Active filter' : 'Filter fully assigned'}</span>
-              <ChevronRight className="w-3.5 h-3.5" />
-            </div>
           </button>
 
-          {/* Card 3: Not Assigned */}
+          {/* Card 4: Not Assigned */}
           <button
             type="button"
-            onClick={() => handleSummaryCardClick('not_assigned')}
-            className={`text-left p-5 rounded-2xl border transition-all duration-200 cursor-pointer ${
-              summaryFilter === 'not_assigned' || summaryFilter === 'pending'
-                ? 'bg-amber-50/50 dark:bg-amber-950/30 border-amber-500 ring-2 ring-amber-500/20 shadow-md'
-                : 'bg-white dark:bg-slate-900 border-amber-200/80 dark:border-amber-900/40 hover:border-amber-300 shadow-xs'
+            onClick={() => handleCardClick('not_assigned')}
+            aria-pressed={cardFilter === 'not_assigned'}
+            className={`p-5 sm:p-6 rounded-2xl min-h-[118px] flex flex-col justify-between text-left transition-all duration-200 cursor-pointer focus:outline-hidden focus:ring-2 focus:ring-amber-500/50 ${
+              cardFilter === 'not_assigned'
+                ? 'bg-amber-50/40 dark:bg-amber-950/30 border-2 border-amber-500 dark:border-amber-500 ring-2 ring-amber-500/20 shadow-sm'
+                : 'bg-white dark:bg-slate-900 border border-amber-200/80 dark:border-amber-900/40 hover:border-amber-400 dark:hover:border-amber-700/60 hover:shadow-xs'
             }`}
           >
             <div className="flex items-center justify-between">
@@ -1104,70 +1267,63 @@ export default function ClassesSections() {
               <span className="text-2xl sm:text-3xl font-extrabold text-amber-700 dark:text-amber-400">
                 {notAssignedGroupsCount}
               </span>
-              <span className="text-xs text-amber-600 dark:text-amber-400 font-medium">sections</span>
-            </div>
-            <div className="mt-2 flex items-center gap-1.5 text-xs text-amber-600 dark:text-amber-400 font-medium">
-              <span>{summaryFilter === 'not_assigned' || summaryFilter === 'pending' ? 'Active filter' : 'Filter not assigned'}</span>
-              <ChevronRight className="w-3.5 h-3.5" />
-            </div>
-          </button>
-
-          {/* Card 4: Enrolled Students */}
-          <button
-            type="button"
-            onClick={() => handleSummaryCardClick('enrolled')}
-            className={`text-left p-5 rounded-2xl border transition-all duration-200 cursor-pointer ${
-              summaryFilter === 'enrolled'
-                ? 'bg-purple-50/40 dark:bg-purple-950/20 border-purple-500 ring-2 ring-purple-500/20 shadow-md'
-                : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 hover:border-purple-300 dark:hover:border-purple-800 shadow-xs'
-            }`}
-          >
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                Enrolled Students
-              </span>
-              <div className="p-2 bg-purple-50 dark:bg-purple-950/60 text-purple-600 dark:text-purple-400 rounded-xl">
-                <Users className="w-5 h-5" />
-              </div>
-            </div>
-            <div className="mt-2.5 flex items-baseline gap-2">
-              <span className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-slate-100">
-                {enrolledStudentsCount}
-              </span>
-              <span className="text-xs text-slate-500 dark:text-slate-400">actual enrolled</span>
-            </div>
-            <div className="mt-2 flex items-center gap-1.5 text-xs text-purple-600 dark:text-purple-400 font-medium">
-              <span>{summaryFilter === 'enrolled' ? 'Active filter' : 'Filter enrolled > 0'}</span>
-              <ChevronRight className="w-3.5 h-3.5" />
+              <span className="text-xs text-amber-600 dark:text-amber-400 font-medium">pending assignment</span>
             </div>
           </button>
         </div>
       </div>
 
-
-      {/* Filter and Search Bar */}
-      <div className="bg-white dark:bg-slate-900 rounded-2xl p-4 border border-slate-200 dark:border-slate-800 shadow-xs flex flex-col sm:flex-row gap-3 items-stretch sm:items-center justify-between transition-colors">
-        {/* Search Field - expanded */}
-        <div className="relative flex-1 min-w-0">
-          <Search className="w-4 h-4 absolute left-3.5 top-3 text-slate-400 dark:text-slate-500" />
+      {/* Filter and Search Bar: 1. Search (with integrated reset icon) -> 2. All Years -> 3. All Departments */}
+      <div className="bg-white dark:bg-slate-900 rounded-2xl p-4 border border-slate-200 dark:border-slate-800 shadow-xs flex flex-col md:flex-row gap-3 items-stretch md:items-center justify-between transition-colors">
+        {/* 1. Search Field - visually wider than both dropdowns with left Search icon and right Reset button */}
+        <div className="relative flex-1 min-w-[200px]">
+          <Search className="w-4 h-4 absolute left-3.5 top-3 text-slate-400 dark:text-slate-500 pointer-events-none" />
           <input
             type="text"
             placeholder="Search departments, sections, or programs..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 rounded-xl focus:ring-2 focus:ring-indigo-500 text-xs sm:text-sm transition-colors"
+            className="w-full h-10 pl-10 pr-10 py-2 border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 rounded-xl focus:ring-2 focus:ring-indigo-500 text-xs sm:text-sm transition-colors"
+            aria-label="Search departments, sections, or programs"
           />
+          <button
+            type="button"
+            onClick={handleResetAllFilters}
+            title="Reset filters"
+            aria-label="Reset filters"
+            className="absolute right-2.5 top-2 p-1 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-slate-100 dark:hover:bg-slate-700/60 rounded-lg transition-colors cursor-pointer"
+          >
+            <RotateCcw className="w-4 h-4" />
+          </button>
         </div>
 
-        {/* Department Dropdown - widened and aligned at far right */}
-        <div className="w-full sm:w-72 md:w-80 shrink-0">
+        {/* 2. All Years Dropdown - exactly equal width to All Departments */}
+        <div className="w-full md:w-60 lg:w-64 shrink-0">
+          <select
+            value={yearFilter}
+            onChange={(e) => setYearFilter(e.target.value)}
+            className="w-full h-10 px-3.5 py-2 border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 rounded-xl text-xs sm:text-sm focus:ring-2 focus:ring-indigo-500 cursor-pointer shadow-2xs"
+            aria-label="Filter by Academic Year"
+          >
+            <option value="all">All Years</option>
+            {ACADEMIC_YEAR_OPTIONS.map(yr => (
+              <option key={yr} value={yr}>
+                {yr}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* 3. All Departments Dropdown - exactly equal width to All Years */}
+        <div className="w-full md:w-60 lg:w-64 shrink-0">
           <select
             value={departmentFilter}
             onChange={(e) => setDepartmentFilter(e.target.value)}
-            className="w-full px-3.5 py-2 border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 rounded-xl text-xs sm:text-sm focus:ring-2 focus:ring-indigo-500 cursor-pointer shadow-2xs"
+            className="w-full h-10 px-3.5 py-2 border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 rounded-xl text-xs sm:text-sm focus:ring-2 focus:ring-indigo-500 cursor-pointer shadow-2xs"
+            aria-label="Filter by Department"
           >
             <option value="all">All Departments</option>
-            {departments.filter(d => d && (d.name || d._id)).map(d => (
+            {uniqueDepartments.map(d => (
               <option key={d._id || d.name} value={d.name}>
                 {d.code ? `${d.code} — ${d.name}` : d.name}
               </option>
@@ -1176,7 +1332,7 @@ export default function ClassesSections() {
         </div>
       </div>
 
-      {/* Task 2 & Task 3: ACADEMIC YEAR HIERARCHY */}
+      {/* ACADEMIC YEAR HIERARCHY */}
       {loading ? (
         <div className="flex flex-col items-center justify-center py-20 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800">
           <Loader2 className="w-10 h-10 animate-spin text-indigo-600 mb-3" />
@@ -1184,9 +1340,31 @@ export default function ClassesSections() {
             Loading academic hierarchy, departments, and section assignments...
           </p>
         </div>
+      ) : displayedHierarchy.length === 0 ? (
+        <div className="p-12 text-center bg-white dark:bg-slate-900 rounded-3xl border border-dashed border-slate-300 dark:border-slate-800">
+          <Building2 className="w-12 h-12 text-slate-300 dark:text-slate-700 mx-auto mb-3" />
+          <h3 className="text-base font-bold text-slate-800 dark:text-slate-200">
+            No Departments or Sections Found
+          </h3>
+          <p className="text-xs text-slate-500 dark:text-slate-400 max-w-md mx-auto mt-1 mb-4">
+            No departments or sections match the selected academic year, department, and search criteria.
+          </p>
+          <button
+            type="button"
+            onClick={() => {
+              setSearchTerm('');
+              setYearFilter('all');
+              setDepartmentFilter('all');
+              setCardFilter('all');
+            }}
+            className="inline-flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold shadow-xs transition-colors cursor-pointer"
+          >
+            Reset All Filters
+          </button>
+        </div>
       ) : (
         <div className="space-y-10">
-          {academicYearHierarchy.map((yearGroup, yearIndex) => {
+          {displayedHierarchy.map((yearGroup, yearIndex) => {
             const hasDepts = yearGroup.departments.length > 0;
 
             return (
@@ -1211,10 +1389,10 @@ export default function ClassesSections() {
                         <span className="text-xs px-2.5 py-0.5 rounded-full font-semibold bg-indigo-100 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300">
                           {yearGroup.totalSections} {yearGroup.totalSections === 1 ? 'Section' : 'Sections'}
                         </span>
+                        <span className="text-xs px-2.5 py-0.5 rounded-full font-semibold bg-purple-100 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300">
+                          {yearGroup.totalStudents} {yearGroup.totalStudents === 1 ? 'Student' : 'Students'}
+                        </span>
                       </div>
-                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                        {yearGroup.totalStudents} total enrolled students across this academic year of study
-                      </p>
                     </div>
                   </div>
 
@@ -1238,7 +1416,7 @@ export default function ClassesSections() {
                         No Departments Configured for {yearGroup.label}
                       </h4>
                       <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm mx-auto mt-1 mb-4">
-                        {searchTerm || summaryFilter !== 'all' || departmentFilter !== 'all' || yearFilter !== 'all'
+                        {searchTerm || cardFilter !== 'all' || departmentFilter !== 'all' || yearFilter !== 'all'
                           ? 'No configured departments in this academic year match your active filter criteria.'
                           : `Configure departments and their initial sections for ${yearGroup.label} to establish the academic structure.`}
                       </p>
@@ -1337,125 +1515,156 @@ export default function ClassesSections() {
                               return (
                                 <div
                                   key={section._id}
-                                  className={`p-4 sm:p-5 rounded-xl border min-h-[145px] transition-all duration-150 flex flex-col justify-between ${
-                                    !isAssigned
-                                      ? 'bg-amber-50/20 dark:bg-amber-950/10 border-amber-200/80 dark:border-amber-900/40 hover:border-amber-300'
-                                      : 'bg-slate-50/60 dark:bg-slate-800/40 border-slate-200 dark:border-slate-800 hover:border-indigo-300 dark:hover:border-indigo-700'
-                                  }`}
+                                  className="section-card-glow p-4 sm:p-5 rounded-2xl border bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 hover:border-indigo-300 dark:hover:border-indigo-700/60 shadow-xs hover:shadow-sm transition-all duration-150 flex flex-col justify-between"
                                 >
                                   {/* Section Card Top */}
                                   <div>
-                                    {/* Section Header */}
-                                    <div className="flex items-start justify-between gap-2 mb-2">
-                                      <div className="flex items-center gap-1.5 min-w-0">
+                                    {/* 1. Section Header: Name, Status Badge, Three-Dot Menu */}
+                                    <div className="flex items-center justify-between gap-2 mb-3">
+                                      <div className="flex items-center gap-2 min-w-0">
                                         <h4 className="text-base font-extrabold text-slate-900 dark:text-slate-100 truncate">
                                           Section {section.section}
                                         </h4>
-                                        <button
-                                          type="button"
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            handleOpenEditSection(section, deptCard);
-                                          }}
-                                          title="Edit Section"
-                                          aria-label={`Edit Section ${section.section}`}
-                                          className="p-1 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 rounded-md transition-colors cursor-pointer shrink-0"
-                                        >
-                                          <Pencil className="w-3.5 h-3.5" />
-                                        </button>
-                                        <button
-                                          type="button"
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            handlePromptDeleteSection(section, deptCard);
-                                          }}
-                                          title={`Delete Section ${section.section}`}
-                                          aria-label={`Delete Section ${section.section}`}
-                                          className="p-1 text-slate-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40 rounded-md transition-colors cursor-pointer shrink-0"
-                                        >
-                                          <Trash2 className="w-3.5 h-3.5" />
-                                        </button>
+                                        {isAssigned ? (
+                                          <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 dark:text-emerald-400 bg-emerald-100/80 dark:bg-emerald-900/40 px-2 py-0.5 rounded-full border border-emerald-200/60 dark:border-emerald-800/50 shrink-0">
+                                            <CheckCircle2 className="w-3 h-3 text-emerald-500 shrink-0" />
+                                            <span>Assigned</span>
+                                          </span>
+                                        ) : (
+                                          <span className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-700 dark:text-amber-400 bg-amber-100/80 dark:bg-amber-900/40 px-2 py-0.5 rounded-full border border-amber-200/60 dark:border-amber-800/50 shrink-0">
+                                            <Clock className="w-3 h-3 text-amber-500 shrink-0" />
+                                            <span>Not Assigned</span>
+                                          </span>
+                                        )}
                                       </div>
-                                      <span className="text-[11px] font-semibold px-2 py-0.5 rounded bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 shrink-0">
-                                        Sem {section.semester}
-                                      </span>
+
+                                      {/* Three-Dot Action Menu */}
+                                      <div className="relative shrink-0" data-section-menu="true">
+                                        <button
+                                          type="button"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            setActiveDropdownSectionId(prev => prev === section._id ? null : section._id);
+                                          }}
+                                          aria-expanded={activeDropdownSectionId === section._id}
+                                          aria-label={`Actions for Section ${section.section}`}
+                                          className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
+                                        >
+                                          <MoreVertical className="w-4 h-4" />
+                                        </button>
+
+                                        {activeDropdownSectionId === section._id && (
+                                          <div
+                                            role="menu"
+                                            className="absolute right-0 top-full mt-1 w-44 bg-white dark:bg-slate-900 rounded-xl shadow-lg border border-slate-200 dark:border-slate-800 py-1.5 z-30 animate-in fade-in zoom-in-95 duration-100"
+                                          >
+                                            <button
+                                              type="button"
+                                              role="menuitem"
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                setActiveDropdownSectionId(null);
+                                                handleOpenEditSection(section, deptCard);
+                                              }}
+                                              className="w-full flex items-center gap-2 px-3.5 py-2 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-indigo-50 dark:hover:bg-indigo-950/60 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors cursor-pointer text-left"
+                                            >
+                                              <Pencil className="w-3.5 h-3.5 text-indigo-500" />
+                                              <span>Edit Section</span>
+                                            </button>
+                                            <div className="my-1 border-t border-slate-100 dark:border-slate-800" />
+                                            <button
+                                              type="button"
+                                              role="menuitem"
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                setActiveDropdownSectionId(null);
+                                                handlePromptDeleteSection(section, deptCard);
+                                              }}
+                                              className="w-full flex items-center gap-2 px-3.5 py-2 text-xs font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/50 transition-colors cursor-pointer text-left"
+                                            >
+                                              <Trash2 className="w-3.5 h-3.5" />
+                                              <span>Delete Section</span>
+                                            </button>
+                                          </div>
+                                        )}
+                                      </div>
                                     </div>
 
-                                    {/* Student Information & Assignment Status */}
-                                    <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 mb-3">
-                                      <span className="flex items-center gap-1.5">
-                                        <Users className="w-3.5 h-3.5 text-slate-400" />
-                                        <strong className="text-slate-800 dark:text-slate-200 font-bold">
+                                    {/* 2. Three Clickable Statistics: Students, Subjects, Teachers */}
+                                    <div className="grid grid-cols-3 gap-2 py-3 border-y border-slate-100 dark:border-slate-800">
+                                      {/* Students */}
+                                      <button
+                                        type="button"
+                                        onClick={() => handleOpenSectionStudents(section, 'students')}
+                                        title={`View ${section.studentCount || 0} enrolled students in Section ${section.section}`}
+                                        className="p-2 sm:p-2.5 rounded-xl border border-slate-200/80 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/40 hover:bg-purple-50 dark:hover:bg-purple-950/40 hover:border-purple-300 dark:hover:border-purple-700/60 transition-all text-center group cursor-pointer"
+                                      >
+                                        <div className="p-1 rounded-md bg-purple-100 dark:bg-purple-900/60 text-purple-600 dark:text-purple-300 w-fit mx-auto mb-1 group-hover:scale-110 transition-transform">
+                                          <Users className="w-3.5 h-3.5" />
+                                        </div>
+                                        <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                                          Students
+                                        </span>
+                                        <span className="text-sm sm:text-base font-black text-slate-900 dark:text-slate-100 group-hover:text-purple-600 dark:group-hover:text-purple-400 transition-colors">
                                           {section.studentCount || 0}
-                                        </strong>{' '}
-                                        {section.studentCount === 1 ? 'Student' : 'Students'}
-                                      </span>
-
-                                      {/* Status Badge */}
-                                      {isAssigned ? (
-                                        <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 dark:text-emerald-400 bg-emerald-100/80 dark:bg-emerald-900/40 px-2 py-0.5 rounded-full border border-emerald-200/60 dark:border-emerald-800/50">
-                                          <CheckCircle2 className="w-3 h-3 text-emerald-500" />
-                                          <span>Assigned</span>
                                         </span>
-                                      ) : (
-                                        <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-700 dark:text-amber-400 bg-amber-100/80 dark:bg-amber-900/40 px-2 py-0.5 rounded-full border border-amber-200/60 dark:border-amber-800/50">
-                                          <Clock className="w-3 h-3 text-amber-500" />
-                                          <span>Not Assigned</span>
+                                      </button>
+
+                                      {/* Subjects */}
+                                      <button
+                                        type="button"
+                                        onClick={() => handleOpenSectionStudents(section, 'subjects')}
+                                        title={`View ${subjectsCount} assigned subjects for Section ${section.section}`}
+                                        className="p-2 sm:p-2.5 rounded-xl border border-slate-200/80 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/40 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 hover:border-indigo-300 dark:hover:border-indigo-700/60 transition-all text-center group cursor-pointer"
+                                      >
+                                        <div className="p-1 rounded-md bg-indigo-100 dark:bg-indigo-900/60 text-indigo-600 dark:text-indigo-300 w-fit mx-auto mb-1 group-hover:scale-110 transition-transform">
+                                          <BookOpen className="w-3.5 h-3.5" />
+                                        </div>
+                                        <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                                          Subjects
                                         </span>
-                                      )}
-                                    </div>
+                                        <span className="text-sm sm:text-base font-black text-slate-900 dark:text-slate-100 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
+                                          {subjectsCount}
+                                        </span>
+                                      </button>
 
-                                    {/* Academic Summary: Subjects Count and Teachers Count (Replaces old Curriculum layout) */}
-                                    <div className="pt-2.5 border-t border-slate-200/80 dark:border-slate-700/60">
-                                      <div className="grid grid-cols-2 gap-2">
-                                        <div className="p-2 rounded-xl bg-white dark:bg-slate-900/80 border border-slate-200/70 dark:border-slate-800 flex items-center gap-2 shadow-2xs">
-                                          <div className="p-1.5 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 shrink-0">
-                                            <BookOpen className="w-3.5 h-3.5" />
-                                          </div>
-                                          <div className="min-w-0">
-                                            <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 truncate">
-                                              Subjects
-                                            </span>
-                                            <span className="text-sm font-extrabold text-slate-900 dark:text-slate-100">
-                                              {subjectsCount}
-                                            </span>
-                                          </div>
+                                      {/* Teachers */}
+                                      <button
+                                        type="button"
+                                        onClick={() => handleOpenSectionStudents(section, 'teachers')}
+                                        title={`View ${teachersCount} assigned teachers for Section ${section.section}`}
+                                        className="p-2 sm:p-2.5 rounded-xl border border-slate-200/80 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/40 hover:bg-teal-50 dark:hover:bg-teal-950/40 hover:border-teal-300 dark:hover:border-teal-700/60 transition-all text-center group cursor-pointer"
+                                      >
+                                        <div className="p-1 rounded-md bg-teal-100 dark:bg-teal-900/60 text-teal-600 dark:text-teal-300 w-fit mx-auto mb-1 group-hover:scale-110 transition-transform">
+                                          <GraduationCap className="w-3.5 h-3.5" />
                                         </div>
-
-                                        <div className="p-2 rounded-xl bg-white dark:bg-slate-900/80 border border-slate-200/70 dark:border-slate-800 flex items-center gap-2 shadow-2xs">
-                                          <div className="p-1.5 rounded-lg bg-teal-50 dark:bg-teal-950/60 text-teal-600 dark:text-teal-400 shrink-0">
-                                            <GraduationCap className="w-3.5 h-3.5" />
-                                          </div>
-                                          <div className="min-w-0">
-                                            <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 truncate">
-                                              Teachers
-                                            </span>
-                                            <span className="text-sm font-extrabold text-slate-900 dark:text-slate-100">
-                                              {teachersCount}
-                                            </span>
-                                          </div>
-                                        </div>
-                                      </div>
+                                        <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                                          Teachers
+                                        </span>
+                                        <span className="text-sm sm:text-base font-black text-slate-900 dark:text-slate-100 group-hover:text-teal-600 dark:group-hover:text-teal-400 transition-colors">
+                                          {teachersCount}
+                                        </span>
+                                      </button>
                                     </div>
                                   </div>
 
-                                  {/* Section Card Action Buttons */}
-                                  <div className="mt-4 pt-3 border-t border-slate-200/80 dark:border-slate-700/60 flex flex-col gap-1.5">
+                                  {/* 3 & 4. Section Card Action Buttons */}
+                                  <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800 flex flex-col gap-1.5">
                                     <button
                                       type="button"
-                                      onClick={() => handleOpenSectionStudents(section)}
-                                      className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-1.5 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-semibold shadow-2xs transition-colors cursor-pointer"
+                                      onClick={() => handleOpenSectionStudents(section, 'overview')}
+                                      className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-2 bg-slate-50 hover:bg-slate-100 dark:bg-slate-800/60 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-semibold shadow-2xs transition-colors cursor-pointer"
                                     >
-                                      <Users className="w-3.5 h-3.5 text-indigo-500" />
+                                      <Eye className="w-3.5 h-3.5 text-indigo-500" />
                                       <span>View Details</span>
                                     </button>
 
                                     <button
                                       type="button"
                                       onClick={() => openGroupModal(section)}
-                                      className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold shadow-2xs transition-colors cursor-pointer"
+                                      className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold shadow-2xs transition-colors cursor-pointer"
                                     >
-                                      <BookOpen className="w-3.5 h-3.5" />
+                                      <SlidersHorizontal className="w-3.5 h-3.5" />
                                       <span>Manage Assignments</span>
                                     </button>
                                   </div>
@@ -1506,31 +1715,22 @@ export default function ClassesSections() {
               {/* Modal Header */}
               <div className="p-5 sm:p-6 border-b border-slate-200 dark:border-slate-800 flex items-start justify-between gap-4">
                 <div>
-                  <div className="flex items-center gap-2 mb-1.5 flex-wrap">
-                    <span className="text-xs font-bold px-2.5 py-0.5 rounded-md bg-indigo-100 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-400">
-                      {viewingSectionStudents.section.course || 'B.Tech'}
-                    </span>
-                    <span className="text-xs font-semibold px-2.5 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
-                      Sem {viewingSectionStudents.section.semester}
-                    </span>
-                    <span className="text-xs font-bold px-2.5 py-0.5 rounded-md bg-indigo-600 text-white">
-                      Section {viewingSectionStudents.section.section}
-                    </span>
-                    <span className="text-xs text-slate-500 dark:text-slate-400">
-                      ({viewingSectionStudents.section.academicYear})
-                    </span>
-                  </div>
                   <h2 className="text-xl sm:text-2xl font-extrabold text-slate-900 dark:text-slate-100 tracking-tight">
                     Section Details — Section {viewingSectionStudents.section.section}
                   </h2>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                    Department: <strong className="text-slate-700 dark:text-slate-300">{viewingSectionStudents.section.department}</strong>
-                    {sectionDeptInfo.code && (
-                      <span className="ml-1.5 text-[11px] font-semibold text-indigo-600 dark:text-indigo-400 font-mono">
-                        ({sectionDeptInfo.code})
-                      </span>
-                    )}
-                  </p>
+                  <div className="flex items-center flex-wrap gap-x-3 gap-y-1 mt-1.5 text-xs text-slate-500 dark:text-slate-400">
+                    <span>
+                      Department: <strong className="font-semibold text-slate-700 dark:text-slate-300">{viewingSectionStudents.section.department}</strong>
+                    </span>
+                    <span className="text-slate-300 dark:text-slate-700">•</span>
+                    <span>
+                      Academic Year: <strong className="font-semibold text-slate-700 dark:text-slate-300">{viewingSectionStudents.section.academicYear}</strong>
+                    </span>
+                    <span className="text-slate-300 dark:text-slate-700">•</span>
+                    <span>
+                      Semester: <strong className="font-semibold text-slate-700 dark:text-slate-300">Sem {viewingSectionStudents.section.semester}</strong>
+                    </span>
+                  </div>
                 </div>
 
                 <button
@@ -1543,335 +1743,667 @@ export default function ClassesSections() {
                 </button>
               </div>
 
-              {/* Top Information Cards */}
+              {/* Modal Navigation Tabs */}
               {(() => {
-                const secStatus = viewingSectionStudents.status || (viewingSectionStudents.section?.status) || 'Not Assigned';
-                const isSecAssigned = secStatus === 'Assigned';
-                const sCount = viewingSectionStudents.subjectsCount !== undefined ? viewingSectionStudents.subjectsCount : (viewingSectionStudents.section?.subjectsCount || 0);
-                const tCount = viewingSectionStudents.teachersCount !== undefined ? viewingSectionStudents.teachersCount : (viewingSectionStudents.section?.teachersCount || 0);
+                const currentTab = viewingSectionStudents.activeTab || 'overview';
+                const sCount = modalDistinctSubjects.length;
+                const tCount = modalDistinctTeachers.length;
 
                 return (
-                  <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2.5 p-4 sm:p-5 bg-slate-50/70 dark:bg-slate-800/40 border-b border-slate-200 dark:border-slate-800 text-xs">
-                    <div className="p-3 rounded-xl bg-white dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700/80 shadow-2xs">
-                      <span className="text-[10px] uppercase font-bold text-slate-400 block mb-0.5">Section</span>
-                      <span className="font-extrabold text-slate-900 dark:text-slate-100 text-sm">
-                        Section {viewingSectionStudents.section.section}
-                      </span>
-                    </div>
-                    <div className="p-3 rounded-xl bg-white dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700/80 shadow-2xs col-span-2 sm:col-span-1 lg:col-span-2">
-                      <span className="text-[10px] uppercase font-bold text-slate-400 block mb-0.5">Department</span>
-                      <div className="flex items-center gap-1.5 truncate">
-                        <span className="font-bold text-slate-900 dark:text-slate-100 truncate" title={viewingSectionStudents.section.department}>
-                          {viewingSectionStudents.section.department}
-                        </span>
-                        {sectionDeptInfo.code && (
-                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-400 font-mono shrink-0">
-                            {sectionDeptInfo.code}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                    <div className="p-3 rounded-xl bg-white dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700/80 shadow-2xs">
-                      <span className="text-[10px] uppercase font-bold text-slate-400 block mb-0.5">Semester</span>
-                      <span className="font-bold text-slate-800 dark:text-slate-200">
-                        Sem {viewingSectionStudents.section.semester}
-                      </span>
-                    </div>
-                    <div className="p-3 rounded-xl bg-white dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700/80 shadow-2xs">
-                      <span className="text-[10px] uppercase font-bold text-slate-400 block mb-0.5">Enrolled</span>
-                      <span className="font-extrabold text-indigo-600 dark:text-indigo-400 text-sm">
+                  <div className="px-5 sm:px-6 border-b border-slate-200 dark:border-slate-800 flex gap-2 sm:gap-4 text-xs font-semibold overflow-x-auto bg-slate-50/50 dark:bg-slate-800/20 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => setViewingSectionStudents(prev => ({ ...prev, activeTab: 'overview' }))}
+                      className={`py-3 px-1 border-b-2 transition-colors cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${
+                        currentTab === 'overview'
+                          ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400 font-bold'
+                          : 'border-transparent text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200'
+                      }`}
+                    >
+                      <Layers className="w-3.5 h-3.5" />
+                      <span>Overview</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setViewingSectionStudents(prev => ({ ...prev, activeTab: 'students' }))}
+                      className={`py-3 px-1 border-b-2 transition-colors cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${
+                        currentTab === 'students'
+                          ? 'border-purple-600 text-purple-600 dark:text-purple-400 font-bold'
+                          : 'border-transparent text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200'
+                      }`}
+                    >
+                      <Users className="w-3.5 h-3.5 text-purple-500" />
+                      <span>Students</span>
+                      <span className="px-1.5 py-0.5 rounded-full bg-purple-100 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 text-[10px] font-bold">
                         {enrolledCount}
                       </span>
-                    </div>
-                    <div className="p-3 rounded-xl bg-white dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700/80 shadow-2xs">
-                      <span className="text-[10px] uppercase font-bold text-slate-400 block mb-0.5">Subjects</span>
-                      <span className="font-extrabold text-slate-900 dark:text-slate-100 text-sm">
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setViewingSectionStudents(prev => ({ ...prev, activeTab: 'subjects' }))}
+                      className={`py-3 px-1 border-b-2 transition-colors cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${
+                        currentTab === 'subjects'
+                          ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400 font-bold'
+                          : 'border-transparent text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200'
+                      }`}
+                    >
+                      <BookOpen className="w-3.5 h-3.5 text-indigo-500" />
+                      <span>Subjects</span>
+                      <span className="px-1.5 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 text-[10px] font-bold">
                         {sCount}
                       </span>
-                    </div>
-                    <div className="p-3 rounded-xl bg-white dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700/80 shadow-2xs">
-                      <span className="text-[10px] uppercase font-bold text-slate-400 block mb-0.5">Teachers</span>
-                      <span className="font-extrabold text-teal-600 dark:text-teal-400 text-sm">
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setViewingSectionStudents(prev => ({ ...prev, activeTab: 'teachers' }))}
+                      className={`py-3 px-1 border-b-2 transition-colors cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${
+                        currentTab === 'teachers'
+                          ? 'border-teal-600 text-teal-600 dark:text-teal-400 font-bold'
+                          : 'border-transparent text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200'
+                      }`}
+                    >
+                      <GraduationCap className="w-3.5 h-3.5 text-teal-500" />
+                      <span>Teachers</span>
+                      <span className="px-1.5 py-0.5 rounded-full bg-teal-100 dark:bg-teal-950/60 text-teal-700 dark:text-teal-300 text-[10px] font-bold">
                         {tCount}
                       </span>
-                    </div>
-                    <div className="p-3 rounded-xl bg-white dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700/80 shadow-2xs col-span-2 sm:col-span-1">
-                      <span className="text-[10px] uppercase font-bold text-slate-400 block mb-0.5">Status</span>
-                      <span className={`inline-flex items-center gap-1 font-bold text-xs ${
-                        isSecAssigned
-                          ? 'text-emerald-600 dark:text-emerald-400'
-                          : 'text-amber-600 dark:text-amber-400'
-                      }`}>
-                        {isSecAssigned ? (
-                          <>
-                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
-                            <span>Assigned</span>
-                          </>
-                        ) : (
-                          <>
-                            <Clock className="w-3.5 h-3.5 text-amber-500" />
-                            <span>Not Assigned</span>
-                          </>
-                        )}
-                      </span>
-                    </div>
+                    </button>
                   </div>
                 );
               })()}
 
               {/* Scrollable Content Body */}
-              <div className="p-5 sm:p-6 overflow-y-auto flex-1 space-y-8">
+              <div className="p-5 sm:p-6 overflow-y-auto flex-1 space-y-6">
                 {sectionStudentsLoading ? (
                   <div className="flex flex-col items-center justify-center py-20">
                     <Loader2 className="w-9 h-9 animate-spin text-indigo-600 mb-3" />
                     <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">Loading section details, assignments, and student roster...</p>
                   </div>
-                ) : (
-                  <>
-                    {/* ======================================================== */}
-                    {/* TASK 4: ASSIGNMENTS TABLE (DISPLAYED FIRST)              */}
-                    {/* ======================================================== */}
-                    <section aria-labelledby="section-assignments-heading">
-                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-3">
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <BookOpen className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
-                            <h3 id="section-assignments-heading" className="text-base font-bold text-slate-900 dark:text-slate-100">
-                              Assignments & Curriculum Allocations ({assignmentCount})
-                            </h3>
+                ) : (() => {
+                  const currentTab = viewingSectionStudents.activeTab || 'overview';
+                  const secStatus = viewingSectionStudents.status || (viewingSectionStudents.section?.status) || 'Not Assigned';
+                  const isSecAssigned = secStatus === 'Assigned';
+                  const sCount = modalDistinctSubjects.length;
+                  const tCount = modalDistinctTeachers.length;
+
+                  return (
+                    <>
+                      {/* ======================================================== */}
+                      {/* TAB 1: OVERVIEW TAB                                      */}
+                      {/* ======================================================== */}
+                      {currentTab === 'overview' && (
+                        <div className="space-y-6">
+                          {/* Top 4 Summary Cards */}
+                          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+                            {/* Card 1: Enrolled Students */}
+                            <div className="p-4 rounded-xl bg-slate-50/70 dark:bg-slate-800/40 border border-slate-200/80 dark:border-slate-800 flex items-center justify-between shadow-2xs">
+                              <div>
+                                <span className="text-[10px] sm:text-[11px] uppercase tracking-wider font-bold text-slate-400 dark:text-slate-500 block mb-1">
+                                  Enrolled Students
+                                </span>
+                                <span className="text-xl sm:text-2xl font-black text-slate-900 dark:text-slate-100">
+                                  {enrolledCount}
+                                </span>
+                              </div>
+                              <div className="p-2.5 rounded-xl bg-purple-50 dark:bg-purple-950/60 text-purple-600 dark:text-purple-400 shrink-0">
+                                <Users className="w-5 h-5" />
+                              </div>
+                            </div>
+
+                            {/* Card 2: Assigned Subjects */}
+                            <div className="p-4 rounded-xl bg-slate-50/70 dark:bg-slate-800/40 border border-slate-200/80 dark:border-slate-800 flex items-center justify-between shadow-2xs">
+                              <div>
+                                <span className="text-[10px] sm:text-[11px] uppercase tracking-wider font-bold text-slate-400 dark:text-slate-500 block mb-1">
+                                  Assigned Subjects
+                                </span>
+                                <span className="text-xl sm:text-2xl font-black text-slate-900 dark:text-slate-100">
+                                  {sCount}
+                                </span>
+                              </div>
+                              <div className="p-2.5 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 shrink-0">
+                                <BookOpen className="w-5 h-5" />
+                              </div>
+                            </div>
+
+                            {/* Card 3: Assigned Teachers */}
+                            <div className="p-4 rounded-xl bg-slate-50/70 dark:bg-slate-800/40 border border-slate-200/80 dark:border-slate-800 flex items-center justify-between shadow-2xs">
+                              <div>
+                                <span className="text-[10px] sm:text-[11px] uppercase tracking-wider font-bold text-slate-400 dark:text-slate-500 block mb-1">
+                                  Assigned Teachers
+                                </span>
+                                <span className="text-xl sm:text-2xl font-black text-slate-900 dark:text-slate-100">
+                                  {tCount}
+                                </span>
+                              </div>
+                              <div className="p-2.5 rounded-xl bg-teal-50 dark:bg-teal-950/60 text-teal-600 dark:text-teal-400 shrink-0">
+                                <GraduationCap className="w-5 h-5" />
+                              </div>
+                            </div>
+
+                            {/* Card 4: Assignment Status */}
+                            <div className="p-4 rounded-xl bg-slate-50/70 dark:bg-slate-800/40 border border-slate-200/80 dark:border-slate-800 flex items-center justify-between shadow-2xs">
+                              <div>
+                                <span className="text-[10px] sm:text-[11px] uppercase tracking-wider font-bold text-slate-400 dark:text-slate-500 block mb-1">
+                                  Assignment Status
+                                </span>
+                                <span className={`inline-flex items-center gap-1.5 text-sm sm:text-base font-extrabold ${
+                                  isSecAssigned
+                                    ? 'text-emerald-600 dark:text-emerald-400'
+                                    : 'text-amber-600 dark:text-amber-400'
+                                }`}>
+                                  {isSecAssigned ? (
+                                    <>
+                                      <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
+                                      <span>Assigned</span>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Clock className="w-4 h-4 text-amber-500 shrink-0" />
+                                      <span>Not Assigned</span>
+                                    </>
+                                  )}
+                                </span>
+                              </div>
+                              <div className={`p-2.5 rounded-xl shrink-0 ${
+                                isSecAssigned
+                                  ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400'
+                                  : 'bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400'
+                              }`}>
+                                {isSecAssigned ? (
+                                  <CheckCircle2 className="w-5 h-5" />
+                                ) : (
+                                  <Clock className="w-5 h-5" />
+                                )}
+                              </div>
+                            </div>
                           </div>
-                          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                            Subjects, curriculum assignments, and faculty allocations for this section.
-                          </p>
-                        </div>
 
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const sec = viewingSectionStudents.section;
-                            handleCloseSectionStudents();
-                            openGroupModal(sec);
-                          }}
-                          className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800/60 rounded-xl text-xs font-semibold transition-colors cursor-pointer self-start sm:self-auto shrink-0"
-                        >
-                          <SlidersHorizontal className="w-3.5 h-3.5" />
-                          <span>Manage Assignments</span>
-                        </button>
-                      </div>
+                          {/* Assigned Subjects & Teachers Section */}
+                          <section aria-labelledby="overview-assignments-heading">
+                            <div className="flex items-center justify-between gap-3 mb-3">
+                              <div className="flex items-center gap-2">
+                                <BookOpen className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                                <h3 id="overview-assignments-heading" className="text-sm font-bold text-slate-900 dark:text-slate-100">
+                                  Assigned Subjects & Teachers
+                                </h3>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const sec = viewingSectionStudents.section;
+                                  handleCloseSectionStudents();
+                                  openGroupModal(sec);
+                                }}
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold shadow-2xs transition-colors cursor-pointer"
+                              >
+                                <SlidersHorizontal className="w-3.5 h-3.5" />
+                                <span>Manage</span>
+                              </button>
+                            </div>
 
-                      {assignmentList.length === 0 ? (
-                        <div className="p-8 text-center border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-2xl bg-slate-50/40 dark:bg-slate-900/40">
-                          <BookOpen className="w-8 h-8 text-slate-300 dark:text-slate-700 mx-auto mb-2" />
-                          <p className="text-xs font-semibold text-slate-700 dark:text-slate-300">
-                            No assignments available for this section yet.
-                          </p>
-                          <p className="text-[11px] text-slate-500 dark:text-slate-400 max-w-sm mx-auto mt-1 mb-3">
-                            Assign subjects and teachers to Section {viewingSectionStudents.section.section} to establish curriculum coverage.
-                          </p>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const sec = viewingSectionStudents.section;
-                              handleCloseSectionStudents();
-                              openGroupModal(sec);
-                            }}
-                            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold shadow-2xs transition-colors cursor-pointer"
-                          >
-                            <Plus className="w-3.5 h-3.5" />
-                            <span>Configure Assignments</span>
-                          </button>
-                        </div>
-                      ) : (
-                        <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800 shadow-2xs">
-                          <table className="w-full text-left text-xs whitespace-nowrap">
-                            <thead className="bg-slate-50 dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 border-b border-slate-200 dark:border-slate-800">
-                              <tr>
-                                <th className="px-4 py-3 font-semibold">Subject Code</th>
-                                <th className="px-4 py-3 font-semibold">Subject Name</th>
-                                <th className="px-4 py-3 font-semibold">Teacher</th>
-                                <th className="px-4 py-3 font-semibold">Assignment</th>
-                                <th className="px-4 py-3 font-semibold">Due Date</th>
-                                <th className="px-4 py-3 font-semibold">Status</th>
-                                <th className="px-4 py-3 font-semibold text-right">Action</th>
-                              </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
-                              {assignmentList.map((asgn, idx) => (
-                                <tr key={asgn._id || idx} className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors">
-                                  <td className="px-4 py-3 font-mono font-bold text-slate-900 dark:text-slate-100">
-                                    {asgn.subject?.code || '—'}
-                                  </td>
-                                  <td className="px-4 py-3 font-medium text-slate-800 dark:text-slate-200">
-                                    {asgn.subject?.name || '—'}
-                                  </td>
-                                  <td className="px-4 py-3 text-slate-600 dark:text-slate-300">
-                                    {asgn.teacher?.user?.name || asgn.teacher?.personalInfo?.name || asgn.teacher?.teacherId || 'Unassigned'}
-                                  </td>
-                                  <td className="px-4 py-3 text-slate-600 dark:text-slate-300">
-                                    {asgn.title || (asgn.subject?.name ? `${asgn.subject.name} Curriculum` : 'Subject Curriculum')}
-                                  </td>
-                                  <td className="px-4 py-3 text-slate-500 dark:text-slate-400">
-                                    {asgn.dueDate ? new Date(asgn.dueDate).toLocaleDateString() : 'End of Semester'}
-                                  </td>
-                                  <td className="px-4 py-3">
-                                    <span className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold ${
-                                      asgn.isActive !== false
-                                        ? 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300'
-                                        : 'bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300'
-                                    }`}>
-                                      {asgn.status || (asgn.isActive !== false ? 'Active' : 'Pending')}
-                                    </span>
-                                  </td>
-                                  <td className="px-4 py-3 text-right">
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        const sec = viewingSectionStudents.section;
-                                        handleCloseSectionStudents();
-                                        openGroupModal(sec);
-                                      }}
-                                      className="inline-flex items-center gap-1 text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 cursor-pointer"
-                                      title="Manage assignment details"
-                                    >
-                                      <span>Manage</span>
-                                      <ExternalLink className="w-3 h-3" />
-                                    </button>
-                                  </td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
+                            {assignmentList.length === 0 ? (
+                              <div className="p-8 text-center border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-xl bg-slate-50/40 dark:bg-slate-900/40">
+                                <BookOpen className="w-8 h-8 text-slate-300 dark:text-slate-700 mx-auto mb-2" />
+                                <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                                  No Subjects or Teachers Assigned
+                                </h4>
+                                <p className="text-[11px] text-slate-500 dark:text-slate-400 max-w-sm mx-auto mt-1 mb-3">
+                                  No subjects or faculty members have been allocated to Section {viewingSectionStudents.section.section} yet.
+                                </p>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const sec = viewingSectionStudents.section;
+                                    handleCloseSectionStudents();
+                                    openGroupModal(sec);
+                                  }}
+                                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold shadow-2xs transition-colors cursor-pointer"
+                                >
+                                  <SlidersHorizontal className="w-3.5 h-3.5" />
+                                  <span>Configure Assignments</span>
+                                </button>
+                              </div>
+                            ) : (
+                              <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800 shadow-2xs">
+                                <table className="w-full text-left text-xs whitespace-nowrap">
+                                  <thead className="bg-slate-50 dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 border-b border-slate-200 dark:border-slate-800">
+                                    <tr>
+                                      <th className="px-4 py-3 font-semibold">Subject Code</th>
+                                      <th className="px-4 py-3 font-semibold">Subject Name</th>
+                                      <th className="px-4 py-3 font-semibold">Assigned Teacher</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
+                                    {assignmentList.map((asgn, idx) => (
+                                      <tr key={asgn._id || idx} className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors">
+                                        <td className="px-4 py-3 font-mono font-bold text-indigo-600 dark:text-indigo-400">
+                                          {asgn.subject?.code || '—'}
+                                        </td>
+                                        <td className="px-4 py-3 font-medium text-slate-800 dark:text-slate-200">
+                                          {asgn.subject?._id ? (
+                                            <Link
+                                              to={`/admin/subjects/${asgn.subject._id}`}
+                                              className="hover:text-indigo-600 dark:hover:text-indigo-400 hover:underline transition-colors font-medium"
+                                              title="View subject details"
+                                            >
+                                              {asgn.subject.name || 'Unnamed Subject'}
+                                            </Link>
+                                          ) : (
+                                            <span>{asgn.subject?.name || '—'}</span>
+                                          )}
+                                        </td>
+                                        <td className="px-4 py-3 text-slate-700 dark:text-slate-300">
+                                          {asgn.teacher?._id ? (
+                                            <Link
+                                              to={`/admin/teachers/${asgn.teacher._id}`}
+                                              className="text-slate-700 dark:text-slate-300 hover:text-teal-600 dark:hover:text-teal-400 hover:underline transition-colors font-medium inline-flex items-center gap-1"
+                                              title="View teacher profile"
+                                            >
+                                              <span>{asgn.teacher?.user?.name || asgn.teacher?.personalInfo?.name || asgn.teacher?.name || asgn.teacher?.teacherId || 'Teacher'}</span>
+                                            </Link>
+                                          ) : (
+                                            <span className="text-slate-400 dark:text-slate-500 italic">
+                                              {asgn.teacher?.user?.name || asgn.teacher?.personalInfo?.name || asgn.teacher?.name || 'Unassigned'}
+                                            </span>
+                                          )}
+                                        </td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
+                            )}
+                          </section>
                         </div>
                       )}
-                    </section>
 
-                    {/* ======================================================== */}
-                    {/* TASK 5: STUDENTS ENROLLED IN THIS SECTION (BELOW ASSIGN)  */}
-                    {/* ======================================================== */}
-                    <section aria-labelledby="section-students-heading">
-                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pt-6 border-t border-slate-200 dark:border-slate-800 mb-3">
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <Users className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
-                            <h3 id="section-students-heading" className="text-base font-bold text-slate-900 dark:text-slate-100">
-                              Students Enrolled in This Section ({enrolledCount})
-                            </h3>
+                      {/* ======================================================== */}
+                      {/* TAB 2: STUDENTS TAB (Clicking Students on Card)          */}
+                      {/* ======================================================== */}
+                      {currentTab === 'students' && (
+                        <section aria-labelledby="section-students-heading" className="space-y-4">
+                          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-2">
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <Users className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+                                <h3 id="section-students-heading" className="text-base font-bold text-slate-900 dark:text-slate-100">
+                                  Enrolled Students in Section {viewingSectionStudents.section.section} ({enrolledCount})
+                                </h3>
+                              </div>
+                              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                                Student roster actively enrolled in Section {viewingSectionStudents.section.section}.
+                              </p>
+                            </div>
+
+                            <div className="relative w-full sm:w-72">
+                              <Search className="w-3.5 h-3.5 absolute left-3 top-2.5 text-slate-400" />
+                              <input
+                                type="text"
+                                placeholder="Search by student name, ID or email..."
+                                value={sectionStudentSearch}
+                                onChange={(e) => setSectionStudentSearch(e.target.value)}
+                                className="w-full pl-8 pr-3 py-1.5 border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 rounded-lg text-xs focus:ring-2 focus:ring-purple-500"
+                              />
+                            </div>
                           </div>
-                          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                            Active student roster belonging to Section {viewingSectionStudents.section.section}.
-                          </p>
-                        </div>
 
-                        <div className="relative w-full sm:w-72">
-                          <Search className="w-3.5 h-3.5 absolute left-3 top-2.5 text-slate-400" />
-                          <input
-                            type="text"
-                            placeholder="Search students in this section..."
-                            value={sectionStudentSearch}
-                            onChange={(e) => setSectionStudentSearch(e.target.value)}
-                            className="w-full pl-8 pr-3 py-1.5 border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 rounded-lg text-xs focus:ring-2 focus:ring-indigo-500"
-                          />
-                        </div>
-                      </div>
-
-                      {modalFilteredStudents.length === 0 ? (
-                        <div className="p-8 text-center border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-2xl bg-slate-50/40 dark:bg-slate-900/40">
-                          <Users className="w-8 h-8 text-slate-300 dark:text-slate-700 mx-auto mb-2" />
-                          <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200">
-                            No Students Enrolled in Section {viewingSectionStudents.section.section}
-                          </h4>
-                          <p className="text-[11px] text-slate-500 dark:text-slate-400 max-w-sm mx-auto mt-1 mb-3">
-                            {sectionStudentSearch
-                              ? 'No students match your active search term.'
-                              : 'Students are automatically assigned to this section when registered with matching academic criteria.'}
-                          </p>
-                          <Link
-                            to="/admin/students/create"
-                            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold shadow-2xs transition-colors"
-                          >
-                            <UserPlus className="w-3.5 h-3.5" />
-                            <span>Register New Student</span>
-                          </Link>
-                        </div>
-                      ) : (
-                        <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800 shadow-2xs">
-                          <table className="w-full text-left text-xs whitespace-nowrap">
-                            <thead className="bg-slate-50 dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 border-b border-slate-200 dark:border-slate-800">
-                              <tr>
-                                <th className="px-4 py-3 font-semibold">Student ID</th>
-                                <th className="px-4 py-3 font-semibold">Student Name</th>
-                                <th className="px-4 py-3 font-semibold">Email</th>
-                                <th className="px-4 py-3 font-semibold">Department</th>
-                                <th className="px-4 py-3 font-semibold">Section</th>
-                                <th className="px-4 py-3 font-semibold">Academic Year</th>
-                                <th className="px-4 py-3 font-semibold">Status</th>
-                              </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
-                              {modalFilteredStudents.map(student => (
-                                <tr key={student._id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors">
-                                  <td className="px-4 py-3">
-                                    <Link
-                                      to={`/admin/students/${student._id}`}
-                                      className="font-mono font-bold text-indigo-600 dark:text-indigo-400 hover:underline"
-                                      title="Open student profile"
-                                    >
-                                      {student.studentId}
-                                    </Link>
-                                  </td>
-                                  <td className="px-4 py-3">
-                                    <Link
-                                      to={`/admin/students/${student._id}`}
-                                      className="font-medium text-slate-800 dark:text-slate-200 hover:text-indigo-600 dark:hover:text-indigo-400"
-                                      title="Open student profile"
-                                    >
-                                      {student.user?.name || student.personalInfo?.name || '—'}
-                                    </Link>
-                                  </td>
-                                  <td className="px-4 py-3 text-slate-500 dark:text-slate-400">
-                                    {student.personalInfo?.email || student.user?.email || '—'}
-                                  </td>
-                                  <td className="px-4 py-3 text-slate-600 dark:text-slate-400">
-                                    {student.department || viewingSectionStudents.section.department}
-                                  </td>
-                                  <td className="px-4 py-3 font-bold text-indigo-600 dark:text-indigo-400">
-                                    Section {student.section || viewingSectionStudents.section.section}
-                                  </td>
-                                  <td className="px-4 py-3 text-slate-600 dark:text-slate-400">
-                                    {student.academicYear || viewingSectionStudents.section.academicYear}
-                                  </td>
-                                  <td className="px-4 py-3">
-                                    <span className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold ${
-                                      student.user?.isActive !== false
-                                        ? 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300'
-                                        : 'bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300'
-                                    }`}>
-                                      {student.user?.isActive !== false ? 'Active' : 'Inactive'}
-                                    </span>
-                                  </td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
+                          {modalFilteredStudents.length === 0 ? (
+                            <div className="p-8 text-center border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-2xl bg-slate-50/40 dark:bg-slate-900/40">
+                              <Users className="w-8 h-8 text-slate-300 dark:text-slate-700 mx-auto mb-2" />
+                              <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                                No Students Enrolled in Section {viewingSectionStudents.section.section}
+                              </h4>
+                              <p className="text-[11px] text-slate-500 dark:text-slate-400 max-w-sm mx-auto mt-1 mb-3">
+                                {sectionStudentSearch
+                                  ? 'No enrolled students match your active search term.'
+                                  : 'Students are automatically assigned to this section when registered with matching academic criteria.'}
+                              </p>
+                              <Link
+                                to="/admin/students/create"
+                                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold shadow-2xs transition-colors"
+                              >
+                                <UserPlus className="w-3.5 h-3.5" />
+                                <span>Register New Student</span>
+                              </Link>
+                            </div>
+                          ) : (
+                            <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800 shadow-2xs">
+                              <table className="w-full text-left text-xs whitespace-nowrap">
+                                <thead className="bg-slate-50 dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 border-b border-slate-200 dark:border-slate-800">
+                                  <tr>
+                                    <th className="px-4 py-3 font-semibold">Student Name</th>
+                                    <th className="px-4 py-3 font-semibold">Student ID</th>
+                                    <th className="px-4 py-3 font-semibold">Email</th>
+                                    <th className="px-4 py-3 font-semibold">Department</th>
+                                    <th className="px-4 py-3 font-semibold">Section</th>
+                                    <th className="px-4 py-3 font-semibold">Academic Year</th>
+                                    <th className="px-4 py-3 font-semibold">Status</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
+                                  {modalFilteredStudents.map(student => (
+                                    <tr key={student._id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors">
+                                      <td className="px-4 py-3 font-semibold text-slate-900 dark:text-slate-100">
+                                        <Link
+                                          to={`/admin/students/${student._id}`}
+                                          className="hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors inline-flex items-center gap-1.5 group cursor-pointer"
+                                          title="Open student profile"
+                                        >
+                                          <span>{student.user?.name || student.personalInfo?.name || '—'}</span>
+                                          <ExternalLink className="w-3 h-3 text-slate-400 group-hover:text-indigo-600 dark:group-hover:text-indigo-400" />
+                                        </Link>
+                                      </td>
+                                      <td className="px-4 py-3 font-mono font-bold text-purple-600 dark:text-purple-400">
+                                        <Link
+                                          to={`/admin/students/${student._id}`}
+                                          className="hover:underline"
+                                          title="Open student profile"
+                                        >
+                                          {student.studentId}
+                                        </Link>
+                                      </td>
+                                      <td className="px-4 py-3 text-slate-500 dark:text-slate-400">
+                                        {student.personalInfo?.email || student.user?.email || '—'}
+                                      </td>
+                                      <td className="px-4 py-3 text-slate-600 dark:text-slate-400">
+                                        {student.department || viewingSectionStudents.section.department}
+                                      </td>
+                                      <td className="px-4 py-3 font-bold text-indigo-600 dark:text-indigo-400">
+                                        Section {student.section || viewingSectionStudents.section.section}
+                                      </td>
+                                      <td className="px-4 py-3 text-slate-600 dark:text-slate-400">
+                                        {student.academicYear || viewingSectionStudents.section.academicYear}
+                                      </td>
+                                      <td className="px-4 py-3">
+                                        <span className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold ${
+                                          student.user?.isActive !== false
+                                            ? 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300'
+                                            : 'bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300'
+                                        }`}>
+                                          {student.user?.isActive !== false ? 'Active' : 'Inactive'}
+                                        </span>
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          )}
+                        </section>
                       )}
-                    </section>
-                  </>
-                )}
-              </div>
 
-              {/* Modal Footer */}
-              <div className="p-4 bg-slate-50 dark:bg-slate-800/50 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between">
-                <span className="text-xs text-slate-500 dark:text-slate-400">
-                  Section ID: <span className="font-mono text-slate-700 dark:text-slate-300">{viewingSectionStudents.section._id}</span>
-                </span>
-                <button
-                  type="button"
-                  onClick={handleCloseSectionStudents}
-                  className="px-4 py-2 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-700 rounded-xl text-xs font-semibold transition-colors cursor-pointer"
-                >
-                  Close
-                </button>
+                      {/* ======================================================== */}
+                      {/* TAB 3: SUBJECTS TAB (Clicking Subjects on Card)          */}
+                      {/* ======================================================== */}
+                      {currentTab === 'subjects' && (
+                        <section aria-labelledby="section-subjects-heading" className="space-y-4">
+                          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-2">
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <BookOpen className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                                <h3 id="section-subjects-heading" className="text-base font-bold text-slate-900 dark:text-slate-100">
+                                  Assigned Subjects in Section {viewingSectionStudents.section.section} ({modalDistinctSubjects.length})
+                                </h3>
+                              </div>
+                              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                                Curriculum subjects currently allocated to Section {viewingSectionStudents.section.section}.
+                              </p>
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const sec = viewingSectionStudents.section;
+                                handleCloseSectionStudents();
+                                openGroupModal(sec);
+                              }}
+                              className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold shadow-2xs transition-colors cursor-pointer self-start sm:self-auto shrink-0"
+                            >
+                              <SlidersHorizontal className="w-3.5 h-3.5" />
+                              <span>Manage Assignments</span>
+                            </button>
+                          </div>
+
+                          {modalDistinctSubjects.length === 0 ? (
+                            <div className="p-8 text-center border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-2xl bg-slate-50/40 dark:bg-slate-900/40">
+                              <BookOpen className="w-8 h-8 text-slate-300 dark:text-slate-700 mx-auto mb-2" />
+                              <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                                No Subjects Assigned to Section {viewingSectionStudents.section.section}
+                              </h4>
+                              <p className="text-[11px] text-slate-500 dark:text-slate-400 max-w-sm mx-auto mt-1 mb-3">
+                                Assign curriculum subjects to this section to establish course coverage.
+                              </p>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const sec = viewingSectionStudents.section;
+                                  handleCloseSectionStudents();
+                                  openGroupModal(sec);
+                                }}
+                                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold shadow-2xs transition-colors cursor-pointer"
+                              >
+                                <Plus className="w-3.5 h-3.5" />
+                                <span>Configure Assignments</span>
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800 shadow-2xs">
+                              <table className="w-full text-left text-xs whitespace-nowrap">
+                                <thead className="bg-slate-50 dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 border-b border-slate-200 dark:border-slate-800">
+                                  <tr>
+                                    <th className="px-4 py-3 font-semibold">Subject Name</th>
+                                    <th className="px-4 py-3 font-semibold">Subject Code</th>
+                                    <th className="px-4 py-3 font-semibold">Subject Type</th>
+                                    <th className="px-4 py-3 font-semibold">Credits</th>
+                                    <th className="px-4 py-3 font-semibold">Assigned Teacher</th>
+                                    <th className="px-4 py-3 font-semibold">Status</th>
+                                    <th className="px-4 py-3 font-semibold text-right">Action</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
+                                  {modalDistinctSubjects.map(sub => (
+                                    <tr key={sub._id || sub.code} className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors">
+                                      <td className="px-4 py-3 font-semibold text-slate-900 dark:text-slate-100">
+                                        {sub._id ? (
+                                          <Link
+                                            to={`/admin/subjects/${sub._id}`}
+                                            className="hover:text-indigo-600 dark:hover:text-indigo-400 hover:underline transition-colors inline-flex items-center gap-1 group"
+                                            title="View subject details"
+                                          >
+                                            <span>{sub.name}</span>
+                                            <ExternalLink className="w-3 h-3 text-slate-400 group-hover:text-indigo-600 dark:group-hover:text-indigo-400" />
+                                          </Link>
+                                        ) : (
+                                          <span>{sub.name}</span>
+                                        )}
+                                      </td>
+                                      <td className="px-4 py-3 font-mono font-bold text-indigo-600 dark:text-indigo-400">
+                                        {sub.code}
+                                      </td>
+                                      <td className="px-4 py-3">
+                                        <span className="inline-block px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-medium text-[11px]">
+                                          {sub.subjectType}
+                                        </span>
+                                      </td>
+                                      <td className="px-4 py-3 font-semibold text-slate-800 dark:text-slate-200">
+                                        {sub.credits}
+                                      </td>
+                                      <td className="px-4 py-3 text-slate-600 dark:text-slate-300">
+                                        {sub.teacherName}
+                                      </td>
+                                      <td className="px-4 py-3">
+                                        <span className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold ${
+                                          sub.status === 'Active'
+                                            ? 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300'
+                                            : 'bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300'
+                                        }`}>
+                                          {sub.status}
+                                        </span>
+                                      </td>
+                                      <td className="px-4 py-3 text-right">
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            const sec = viewingSectionStudents.section;
+                                            handleCloseSectionStudents();
+                                            openGroupModal(sec);
+                                          }}
+                                          className="inline-flex items-center gap-1 text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 cursor-pointer"
+                                          title="Manage assignment details"
+                                        >
+                                          <span>Manage</span>
+                                          <ExternalLink className="w-3 h-3" />
+                                        </button>
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          )}
+                        </section>
+                      )}
+
+                      {/* ======================================================== */}
+                      {/* TAB 4: TEACHERS TAB (Clicking Teachers on Card)          */}
+                      {/* ======================================================== */}
+                      {currentTab === 'teachers' && (
+                        <section aria-labelledby="section-teachers-heading" className="space-y-4">
+                          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-2">
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <GraduationCap className="w-4 h-4 text-teal-600 dark:text-teal-400" />
+                                <h3 id="section-teachers-heading" className="text-base font-bold text-slate-900 dark:text-slate-100">
+                                  Assigned Teachers in Section {viewingSectionStudents.section.section} ({modalDistinctTeachers.length})
+                                </h3>
+                              </div>
+                              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                                Faculty members actively teaching subjects in Section {viewingSectionStudents.section.section}.
+                              </p>
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const sec = viewingSectionStudents.section;
+                                handleCloseSectionStudents();
+                                openGroupModal(sec);
+                              }}
+                              className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-xl text-xs font-semibold shadow-2xs transition-colors cursor-pointer self-start sm:self-auto shrink-0"
+                            >
+                              <SlidersHorizontal className="w-3.5 h-3.5" />
+                              <span>Manage Assignments</span>
+                            </button>
+                          </div>
+
+                          {modalDistinctTeachers.length === 0 ? (
+                            <div className="p-8 text-center border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-2xl bg-slate-50/40 dark:bg-slate-900/40">
+                              <GraduationCap className="w-8 h-8 text-slate-300 dark:text-slate-700 mx-auto mb-2" />
+                              <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                                No Teachers Assigned to Section {viewingSectionStudents.section.section}
+                              </h4>
+                              <p className="text-[11px] text-slate-500 dark:text-slate-400 max-w-sm mx-auto mt-1 mb-3">
+                                Allocate faculty to subjects in Section {viewingSectionStudents.section.section} to complete teaching assignments.
+                              </p>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const sec = viewingSectionStudents.section;
+                                  handleCloseSectionStudents();
+                                  openGroupModal(sec);
+                                }}
+                                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-teal-600 hover:bg-teal-700 text-white rounded-xl text-xs font-semibold shadow-2xs transition-colors cursor-pointer"
+                              >
+                                <Plus className="w-3.5 h-3.5" />
+                                <span>Assign Teachers</span>
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800 shadow-2xs">
+                              <table className="w-full text-left text-xs whitespace-nowrap">
+                                <thead className="bg-slate-50 dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 border-b border-slate-200 dark:border-slate-800">
+                                  <tr>
+                                    <th className="px-4 py-3 font-semibold">Teacher Name</th>
+                                    <th className="px-4 py-3 font-semibold">Faculty ID</th>
+                                    <th className="px-4 py-3 font-semibold">Designation</th>
+                                    <th className="px-4 py-3 font-semibold">Assigned Subject(s)</th>
+                                    <th className="px-4 py-3 font-semibold">Status</th>
+                                    <th className="px-4 py-3 font-semibold text-right">Action</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
+                                  {modalDistinctTeachers.map(tch => (
+                                    <tr key={tch._id || tch.teacherId} className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors">
+                                      <td className="px-4 py-3 font-semibold text-slate-900 dark:text-slate-100">
+                                        {tch._id ? (
+                                          <Link
+                                            to={`/admin/teachers/${tch._id}`}
+                                            className="hover:text-teal-600 dark:hover:text-teal-400 transition-colors inline-flex items-center gap-1 group cursor-pointer"
+                                            title="Open teacher profile"
+                                          >
+                                            <span>{tch.name}</span>
+                                            <ExternalLink className="w-3 h-3 text-slate-400 group-hover:text-teal-600 dark:group-hover:text-teal-400" />
+                                          </Link>
+                                        ) : (
+                                          <span>{tch.name}</span>
+                                        )}
+                                      </td>
+                                      <td className="px-4 py-3 font-mono font-bold text-teal-600 dark:text-teal-400">
+                                        {tch.teacherId}
+                                      </td>
+                                      <td className="px-4 py-3 text-slate-700 dark:text-slate-300 font-medium">
+                                        {tch.designation}
+                                      </td>
+                                      <td className="px-4 py-3">
+                                        <div className="flex flex-wrap gap-1 max-w-xs">
+                                          {tch.subjects.map((sub, sIdx) => (
+                                            <span
+                                              key={sIdx}
+                                              className="inline-block px-2 py-0.5 rounded-md bg-teal-50 dark:bg-teal-950/60 text-teal-700 dark:text-teal-300 text-[11px] font-medium border border-teal-200/60 dark:border-teal-800/40"
+                                            >
+                                              {sub}
+                                            </span>
+                                          ))}
+                                        </div>
+                                      </td>
+                                      <td className="px-4 py-3">
+                                        <span className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold ${
+                                          tch.status === 'Active'
+                                            ? 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300'
+                                            : 'bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300'
+                                        }`}>
+                                          {tch.status}
+                                        </span>
+                                      </td>
+                                      <td className="px-4 py-3 text-right">
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            const sec = viewingSectionStudents.section;
+                                            handleCloseSectionStudents();
+                                            openGroupModal(sec);
+                                          }}
+                                          className="inline-flex items-center gap-1 text-xs font-semibold text-teal-600 dark:text-teal-400 hover:text-teal-800 dark:hover:text-teal-300 cursor-pointer"
+                                          title="Manage assignments"
+                                        >
+                                          <span>Manage</span>
+                                          <ExternalLink className="w-3 h-3" />
+                                        </button>
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          )}
+                        </section>
+                      )}
+                    </>
+                  );
+                })()}
               </div>
             </div>
           </div>

@@ -356,6 +356,16 @@ export default function StudentProfile() {
               >
                 {isActive ? 'Active Account' : 'Inactive Account'}
               </span>
+              <span
+                className={`inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full text-xs font-semibold ${
+                  student.classRef
+                    ? 'bg-purple-100 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800/40'
+                    : 'bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800/40'
+                }`}
+              >
+                {!student.classRef && <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />}
+                {student.classRef ? 'Enrolled in Section' : 'Unassigned (No Section)'}
+              </span>
             </div>
             <div className="flex flex-wrap items-center gap-y-1 gap-x-4 text-sm text-slate-500 dark:text-slate-400">
               <span className="flex items-center gap-1 font-mono text-slate-700 dark:text-slate-300">
@@ -477,7 +487,14 @@ export default function StudentProfile() {
             <div className="flex flex-col sm:flex-row sm:justify-between py-2 border-b border-slate-50 dark:border-slate-800/60 gap-1">
               <dt className="text-sm font-medium text-slate-500 dark:text-slate-400">Section</dt>
               <dd className="text-sm font-semibold text-slate-900 dark:text-slate-100 sm:text-right">
-                {displayVal(student.section)}
+                {student.classRef ? (
+                  `Section ${student.classRef.section || student.section || '—'}`
+                ) : (
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800/60">
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+                    Unassigned
+                  </span>
+                )}
               </dd>
             </div>
 

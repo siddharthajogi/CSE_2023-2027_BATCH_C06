@@ -173,3 +173,90 @@ select option:checked {
   justify-content: center;
 }
 
+/* ==========================================================================
+   Section Card Animated Border Glow Effect
+   Continuously moving glowing border matching Manage Assignments purple accent
+   ========================================================================== */
+@property --cp-border-angle {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+
+@keyframes cp-border-spin {
+  0% {
+    --cp-border-angle: 0deg;
+  }
+  100% {
+    --cp-border-angle: 360deg;
+  }
+}
+
+.section-card-glow {
+  position: relative;
+}
+
+/* Crisp 1.5px moving glowing border line */
+.section-card-glow::before {
+  content: "";
+  position: absolute;
+  inset: -1.5px;
+  border-radius: calc(1rem + 1.5px);
+  padding: 1.5px;
+  background: conic-gradient(
+    from var(--cp-border-angle, 0deg),
+    transparent 0deg,
+    transparent 220deg,
+    rgba(79, 70, 229, 0.15) 250deg,
+    rgba(79, 70, 229, 0.45) 285deg,
+    rgba(99, 102, 241, 0.85) 325deg,
+    rgba(129, 140, 248, 1) 350deg,
+    rgba(79, 70, 229, 0.5) 358deg,
+    transparent 360deg
+  );
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+  pointer-events: none;
+  z-index: 2;
+  animation: cp-border-spin 4.5s linear infinite;
+}
+
+/* Soft ambient purple diffuse glow bloom along the traveling beam */
+.section-card-glow::after {
+  content: "";
+  position: absolute;
+  inset: -2px;
+  border-radius: calc(1rem + 2px);
+  padding: 2px;
+  background: conic-gradient(
+    from var(--cp-border-angle, 0deg),
+    transparent 0deg,
+    transparent 230deg,
+    rgba(79, 70, 229, 0.1) 260deg,
+    rgba(99, 102, 241, 0.35) 305deg,
+    rgba(129, 140, 248, 0.6) 340deg,
+    rgba(99, 102, 241, 0.4) 355deg,
+    transparent 360deg
+  );
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+  pointer-events: none;
+  z-index: 1;
+  filter: blur(4px);
+  animation: cp-border-spin 4.5s linear infinite;
+  opacity: 0.85;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .section-card-glow::before,
+  .section-card-glow::after {
+    animation: none;
+    opacity: 0.5;
+  }
+}
+
+

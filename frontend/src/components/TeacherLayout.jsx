@@ -2,19 +2,19 @@ import React, { useState, useEffect, useRef } from 'react';
 import { NavLink, Outlet, useNavigate, useLocation, Link } from 'react-router-dom';
 import {
   LayoutDashboard,
-  BookOpen,
-  Layers,
+  BookMarked,
+  Presentation,
   Users,
-  Activity,
+  ShieldAlert,
   Target,
   Sparkles,
   CheckSquare,
-  FileText,
+  FileSpreadsheet,
   CalendarCheck,
-  BookOpenCheck,
+  FileEdit,
   TrendingUp,
-  User,
-  LogOut,
+  CircleUserRound,
+  Power,
   Sun,
   Moon,
   Bell,
@@ -120,18 +120,18 @@ export default function TeacherLayout({ onLogout, currentUser }) {
   // 13. My Profile
   const menuItems = [
     { name: 'Home', icon: LayoutDashboard, path: '/teacher/dashboard' },
-    { name: 'My Subjects', icon: BookOpen, path: '/teacher/subjects' },
-    { name: 'My Classes', icon: Layers, path: '/teacher/classes' },
+    { name: 'My Subjects', icon: BookMarked, path: '/teacher/subjects' },
+    { name: 'My Classes', icon: Presentation, path: '/teacher/classes' },
     { name: 'Students', icon: Users, path: '/teacher/students' },
-    { name: 'Student Risk Analytics', icon: Activity, path: '/teacher/risk-analytics' },
+    { name: 'Student Risk Analytics', icon: ShieldAlert, path: '/teacher/risk-analytics' },
     { name: 'Knowledge-Gap Analysis', icon: Target, path: '/teacher/knowledge-gaps' },
     { name: 'Personalized Learning', icon: Sparkles, path: '/teacher/personalized-learning' },
     { name: 'Intervention Review', icon: CheckSquare, path: '/teacher/intervention-review' },
-    { name: 'Academic Records', icon: FileText, path: '/teacher/academic-records' },
+    { name: 'Academic Records', icon: FileSpreadsheet, path: '/teacher/academic-records' },
     { name: 'Attendance', icon: CalendarCheck, path: '/teacher/attendance' },
-    { name: 'Assignments', icon: BookOpenCheck, path: '/teacher/assignments' },
+    { name: 'Assignments', icon: FileEdit, path: '/teacher/assignments' },
     { name: 'Learning Improvement', icon: TrendingUp, path: '/teacher/learning-improvement' },
-    { name: 'My Profile', icon: User, path: '/teacher/profile' }
+    { name: 'My Profile', icon: CircleUserRound, path: '/teacher/profile' }
   ];
 
   const renderNavLinks = (closeMobile = false) => (
@@ -155,8 +155,8 @@ export default function TeacherLayout({ onLogout, currentUser }) {
             <div className="flex items-center gap-3">
               <item.icon
                 className={`w-4 h-4 sm:w-4.5 sm:h-4.5 shrink-0 transition-colors ${isActive
-                    ? 'text-emerald-600 dark:text-emerald-400'
-                    : 'text-slate-400 group-hover:text-emerald-600 dark:group-hover:text-emerald-400'
+                  ? 'text-emerald-600 dark:text-emerald-400'
+                  : 'text-slate-400 group-hover:text-emerald-600 dark:group-hover:text-emerald-400'
                   }`}
               />
               <span>{item.name}</span>
@@ -192,7 +192,7 @@ export default function TeacherLayout({ onLogout, currentUser }) {
             onClick={handleLogout}
             className="flex items-center gap-3 px-3 py-2.5 w-full text-xs sm:text-sm font-medium text-rose-600 dark:text-rose-400 rounded-xl hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors cursor-pointer"
           >
-            <LogOut className="w-4 h-4 sm:w-4.5 sm:h-4.5 shrink-0" />
+            <Power className="w-4 h-4 sm:w-4.5 sm:h-4.5 shrink-0" />
             <span>Logout</span>
           </button>
         </div>
@@ -236,7 +236,7 @@ export default function TeacherLayout({ onLogout, currentUser }) {
                 onClick={handleLogout}
                 className="flex items-center gap-3 px-3 py-2.5 w-full text-sm font-medium text-rose-600 dark:text-rose-400 rounded-xl hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors cursor-pointer"
               >
-                <LogOut className="w-4.5 h-4.5 shrink-0" />
+                <Power className="w-4.5 h-4.5 shrink-0" />
                 <span>Logout</span>
               </button>
             </div>
@@ -274,8 +274,8 @@ export default function TeacherLayout({ onLogout, currentUser }) {
             <Link
               to="/teacher/notifications"
               className={`relative inline-flex items-center gap-2 px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl text-xs sm:text-sm font-medium transition-colors border cursor-pointer ${location.pathname === '/teacher/notifications'
-                  ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700 shadow-2xs font-semibold'
-                  : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 hover:bg-emerald-50/50 dark:hover:bg-emerald-950/30 hover:border-emerald-300 dark:hover:border-emerald-700 hover:text-emerald-700 dark:hover:text-emerald-300'
+                ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700 shadow-2xs font-semibold'
+                : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 hover:bg-emerald-50/50 dark:hover:bg-emerald-950/30 hover:border-emerald-300 dark:hover:border-emerald-700 hover:text-emerald-700 dark:hover:text-emerald-300'
                 }`}
               title="Teacher Notifications"
               aria-label="Teacher Notifications"
@@ -290,8 +290,8 @@ export default function TeacherLayout({ onLogout, currentUser }) {
                 type="button"
                 onClick={() => setIsThemeOpen((prev) => !prev)}
                 className={`inline-flex items-center gap-2 px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl text-xs sm:text-sm font-medium transition-colors border cursor-pointer ${isThemeOpen
-                    ? 'bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100 border-emerald-400 dark:border-emerald-600 shadow-2xs'
-                    : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100'
+                  ? 'bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100 border-emerald-400 dark:border-emerald-600 shadow-2xs'
+                  : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100'
                   }`}
                 title="Select Theme"
                 aria-label="Select Theme"
@@ -329,8 +329,8 @@ export default function TeacherLayout({ onLogout, currentUser }) {
                       setIsThemeOpen(false);
                     }}
                     className={`w-full flex items-center justify-between px-3 py-2 text-xs sm:text-sm rounded-xl transition-colors cursor-pointer ${theme === 'light'
-                        ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 font-semibold border-l-[3px] border-emerald-600 dark:border-emerald-400 pl-2.5'
-                        : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100'
+                      ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 font-semibold border-l-[3px] border-emerald-600 dark:border-emerald-400 pl-2.5'
+                      : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100'
                       }`}
                     role="menuitem"
                   >
@@ -351,8 +351,8 @@ export default function TeacherLayout({ onLogout, currentUser }) {
                       setIsThemeOpen(false);
                     }}
                     className={`w-full flex items-center justify-between px-3 py-2 text-xs sm:text-sm rounded-xl transition-colors cursor-pointer ${theme === 'dark'
-                        ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 font-semibold border-l-[3px] border-emerald-600 dark:border-emerald-400 pl-2.5'
-                        : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100'
+                      ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 font-semibold border-l-[3px] border-emerald-600 dark:border-emerald-400 pl-2.5'
+                      : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100'
                       }`}
                     role="menuitem"
                   >
@@ -375,7 +375,7 @@ export default function TeacherLayout({ onLogout, currentUser }) {
               title="Logout"
               aria-label="Logout"
             >
-              <LogOut className="w-5 h-5" />
+              <Power className="w-5 h-5" />
             </button>
           </div>
         </header>

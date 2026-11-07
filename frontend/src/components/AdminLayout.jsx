@@ -1,15 +1,18 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { NavLink, Outlet, useNavigate, useLocation, Link } from 'react-router-dom';
 import {
-  LayoutDashboard,
-  Users,
-  User,
+  House,
+  UsersRound,
   GraduationCap,
-  BookOpen,
+  Building2,
+  LibraryBig,
+  ClipboardList,
+  ChartNoAxesCombined,
+  ChartColumnIncreasing,
+  History,
   Settings,
   LogOut,
-  Activity,
-  FileText,
+  User,
   Sun,
   Moon,
   Bell,
@@ -263,15 +266,15 @@ export default function AdminLayout({ onLogout, currentUser }) {
   }, [isThemeOpen]);
 
   const menuItems = [
-    { name: 'Home', icon: LayoutDashboard, path: '/admin/dashboard' },
-    { name: 'Manage Students', icon: Users, path: '/admin/students' },
+    { name: 'Home', icon: House, path: '/admin/dashboard' },
+    { name: 'Manage Students', icon: UsersRound, path: '/admin/students' },
     { name: 'Manage Teachers', icon: GraduationCap, path: '/admin/teachers' },
-    { name: 'Departments & Sections', icon: BookOpen, path: '/admin/classes' },
-    { name: 'Subjects', icon: BookOpen, path: '/admin/subjects' },
-    { name: 'Academic Records', icon: FileText, path: '/admin/academic-records' },
-    { name: 'Risk Analytics', icon: Activity, path: '/admin/risk-analytics' },
-    { name: 'Reports', icon: FileText, path: '/admin/reports' },
-    { name: 'Activity Logs', icon: FileText, path: '/admin/activity-logs' },
+    { name: 'Departments & Sections', icon: Building2, path: '/admin/classes' },
+    { name: 'Subjects', icon: LibraryBig, path: '/admin/subjects' },
+    { name: 'Academic Records', icon: ClipboardList, path: '/admin/academic-records' },
+    { name: 'Risk Analytics', icon: ChartNoAxesCombined, path: '/admin/risk-analytics' },
+    { name: 'Reports', icon: ChartColumnIncreasing, path: '/admin/reports' },
+    { name: 'Activity Logs', icon: History, path: '/admin/activity-logs' },
     { name: 'Settings', icon: Settings, path: '/admin/settings' },
   ];
 

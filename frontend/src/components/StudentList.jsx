@@ -1,14 +1,29 @@
 import React, { useEffect, useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { adminApi } from '../api';
 import { usePageRefresh } from '../context/RefreshContext';
 import { Loader2, Search, Plus, MoreVertical, ShieldAlert, X, Trash2, CheckCircle2 } from 'lucide-react';
 import DeleteConfirmationModal from './DeleteConfirmationModal';
 
 // Academic year and section normalization helpers
-export const resolveSectionName = (student) => {
+export const isStudentEnrolled = (student, configuredClasses = []) => {
+  if (!student || !student.classRef) return false;
+  const classId = typeof student.classRef === 'object' ? student.classRef._id : student.classRef;
+  if (!classId) return false;
+  if (!configuredClasses || configuredClasses.length === 0) return true;
+  return configuredClasses.some(c => String(c._id) === String(classId));
+};
+
+export const resolveSectionName = (student, configuredClasses = []) => {
   if (!student) return '—';
-  const sec = student.section || student.classRef?.section;
+  // If student has no valid classRef or is not in configured classes, they are unassigned
+  if (!student.classRef) return '—';
+  if (configuredClasses && configuredClasses.length > 0) {
+    const classId = typeof student.classRef === 'object' ? student.classRef._id : student.classRef;
+    const isEnrolled = configuredClasses.some(c => String(c._id) === String(classId));
+    if (!isEnrolled) return '—';
+  }
+  const sec = (student.classRef && student.classRef.section) || student.section;
   if (!sec) return '—';
   // Strip redundant "Section " or "Sec " prefixes if present (e.g. "Section C" -> "C", "Sec C" -> "C")
   const cleaned = String(sec).replace(/^(section|sec)\s+/i, '').trim();
@@ -46,6 +61,7 @@ export const resolveStudentYear = (student) => {
 
 export default function StudentList() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [students, setStudents] = useState([]);
   const [departments, setDepartments] = useState([]);
   const [configuredClasses, setConfiguredClasses] = useState([]);
@@ -57,8 +73,19 @@ export default function StudentList() {
   const [filterDepartment, setFilterDepartment] = useState('');
   const [filterSection, setFilterSection] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState('ALL'); // 'ALL' | 'ACTIVE' | 'INACTIVE'
+  const [statusFilter, setStatusFilter] = useState(() => {
+    const filterParam = searchParams.get('filter');
+    if (filterParam === 'active') return 'ACTIVE';
+    if (filterParam === 'inactive') return 'INACTIVE';
+    return 'ALL';
+  });
   const [actionSuccess, setActionSuccess] = useState('');
+
+  useEffect(() => {
+    const filterParam = searchParams.get('filter');
+    if (filterParam === 'active') setStatusFilter('ACTIVE');
+    else if (filterParam === 'inactive') setStatusFilter('INACTIVE');
+  }, [searchParams]);
 
   // Delete modal state
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
@@ -229,7 +256,7 @@ export default function StudentList() {
 
     const initialDeptId = matchedDept ? matchedDept._id : (studentDeptRaw ? 'Other' : '');
     setDepartmentSelect(initialDeptId);
-    
+
     const isCourseKnown = coursesList.includes(student.course);
     setCourseSelect(isCourseKnown ? student.course : (student.course ? 'Other' : ''));
 
@@ -288,7 +315,7 @@ export default function StudentList() {
     return found ? found.name : raw;
   };
 
-  // Available sections dynamically derived from selected department and configured classes/students
+  // Available sections dynamically derived from configured classes
   const availableSections = React.useMemo(() => {
     const secSet = new Set();
 
@@ -309,33 +336,12 @@ export default function StudentList() {
       }
     });
 
-    students.forEach(s => {
-      const sec = resolveSectionName(s);
-      if (!sec || sec === '—') return;
-
-      if (!filterDepartment) {
-        secSet.add(sec);
-      } else {
-        const sDept = resolveStudentDept(s);
-        const matchesDept =
-          sDept === filterDepartment ||
-          (s.departmentRef && String(s.departmentRef._id || s.departmentRef) === String(filterDepartment)) ||
-          departments.some(d => (String(d._id) === String(filterDepartment) || d.name === filterDepartment || d.code === filterDepartment) &&
-            (sDept === d.name || (d.code && sDept === d.code)));
-        if (matchesDept) secSet.add(sec);
-      }
-    });
-
-    if (secSet.size === 0) {
-      ['A', 'B', 'C'].forEach(s => secSet.add(s));
-    }
-
     return Array.from(secSet).sort();
-  }, [configuredClasses, students, filterDepartment, departments]);
+  }, [configuredClasses, filterDepartment, departments]);
 
   // Reset section filter if currently selected section is no longer available in newly selected department
   useEffect(() => {
-    if (filterSection && !availableSections.includes(filterSection)) {
+    if (filterSection && filterSection !== 'UNASSIGNED' && !availableSections.includes(filterSection)) {
       setFilterSection('');
     }
   }, [availableSections, filterSection]);
@@ -361,10 +367,10 @@ export default function StudentList() {
     const sYear = resolveStudentYear(s);
     const matchesYear = !filterYear ? true : (
       filterYear === 'First Year' ? sYear === 'First' :
-      filterYear === 'Second Year' ? sYear === 'Second' :
-      filterYear === 'Third Year' ? sYear === 'Third' :
-      filterYear === 'Fourth Year' ? sYear === 'Fourth' :
-      sYear === filterYear
+        filterYear === 'Second Year' ? sYear === 'Second' :
+          filterYear === 'Third Year' ? sYear === 'Third' :
+            filterYear === 'Fourth Year' ? sYear === 'Fourth' :
+              sYear === filterYear
     );
 
     // 3. Department filter
@@ -384,14 +390,17 @@ export default function StudentList() {
     })();
 
     // 4. Section filter
-    const sSec = resolveSectionName(s);
-    const matchesSection = !filterSection ? true : sSec === filterSection;
+    const matchesSection = !filterSection ? true : (
+      filterSection === 'UNASSIGNED'
+        ? !isStudentEnrolled(s, configuredClasses)
+        : resolveSectionName(s, configuredClasses) === filterSection
+    );
 
     // 5. Status filter (from summary cards)
     const matchesStatus =
       statusFilter === 'ACTIVE' ? Boolean(s.user?.isActive) :
-      statusFilter === 'INACTIVE' ? !s.user?.isActive :
-      true;
+        statusFilter === 'INACTIVE' ? !s.user?.isActive :
+          true;
 
     return matchesSearch && matchesYear && matchesDept && matchesSection && matchesStatus;
   });
@@ -412,6 +421,8 @@ export default function StudentList() {
   });
 
   const totalStudents = students.length;
+  const enrolledStudents = students.filter(s => isStudentEnrolled(s, configuredClasses)).length;
+  const unassignedStudents = totalStudents - enrolledStudents;
   const activeStudents = students.filter(s => s.user?.isActive).length;
   const inactiveStudents = totalStudents - activeStudents;
 
@@ -422,17 +433,16 @@ export default function StudentList() {
     <div className="flex flex-col gap-6 h-full">
       {/* Top Metric Cards - Clickable Summary Filter Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {/* Total Students Card */}
+        {/* Card 1: Total Students */}
         <button
           type="button"
           onClick={() => setStatusFilter('ALL')}
-          className={`p-4 rounded-xl border text-left transition-all duration-150 cursor-pointer flex items-center justify-between ${
-            statusFilter === 'ALL'
-              ? 'bg-indigo-50/70 dark:bg-indigo-950/40 border-indigo-500 dark:border-indigo-500 ring-2 ring-indigo-500/20 dark:ring-indigo-500/30 shadow-sm'
-              : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 shadow-sm hover:border-indigo-300 dark:hover:border-indigo-800/80 hover:shadow-md'
-          }`}
+          className={`p-4 rounded-xl border text-left transition-all duration-150 cursor-pointer flex items-center justify-between ${statusFilter === 'ALL'
+            ? 'bg-indigo-50/70 dark:bg-indigo-950/40 border-indigo-500 dark:border-indigo-500 ring-2 ring-indigo-500/20 dark:ring-indigo-500/30 shadow-sm'
+            : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 shadow-sm hover:border-indigo-300 dark:hover:border-indigo-800/80 hover:shadow-md'
+            }`}
           aria-pressed={statusFilter === 'ALL'}
-          aria-label="Show all students"
+          aria-label="Show all student accounts"
         >
           <div>
             <p className={`text-sm font-medium ${statusFilter === 'ALL' ? 'text-indigo-700 dark:text-indigo-300 font-semibold' : 'text-slate-500 dark:text-slate-400'}`}>
@@ -442,15 +452,14 @@ export default function StudentList() {
           </div>
         </button>
 
-        {/* Active Students Card */}
+        {/* Card 2: Active Students */}
         <button
           type="button"
           onClick={() => setStatusFilter('ACTIVE')}
-          className={`p-4 rounded-xl border text-left transition-all duration-150 cursor-pointer flex items-center justify-between ${
-            statusFilter === 'ACTIVE'
-              ? 'bg-emerald-50/70 dark:bg-emerald-950/40 border-emerald-500 dark:border-emerald-500 ring-2 ring-emerald-500/20 dark:ring-emerald-500/30 shadow-sm'
-              : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 shadow-sm hover:border-emerald-300 dark:hover:border-emerald-800/80 hover:shadow-md'
-          }`}
+          className={`p-4 rounded-xl border text-left transition-all duration-150 cursor-pointer flex items-center justify-between ${statusFilter === 'ACTIVE'
+            ? 'bg-emerald-50/70 dark:bg-emerald-950/40 border-emerald-500 dark:border-emerald-500 ring-2 ring-emerald-500/20 dark:ring-emerald-500/30 shadow-sm'
+            : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 shadow-sm hover:border-emerald-300 dark:hover:border-emerald-800/80 hover:shadow-md'
+            }`}
           aria-pressed={statusFilter === 'ACTIVE'}
           aria-label="Filter active students"
         >
@@ -462,15 +471,14 @@ export default function StudentList() {
           </div>
         </button>
 
-        {/* Inactive Students Card */}
+        {/* Card 3: Inactive Students */}
         <button
           type="button"
           onClick={() => setStatusFilter('INACTIVE')}
-          className={`p-4 rounded-xl border text-left transition-all duration-150 cursor-pointer flex items-center justify-between ${
-            statusFilter === 'INACTIVE'
-              ? 'bg-slate-100 dark:bg-slate-800 border-slate-500 dark:border-slate-400 ring-2 ring-slate-500/20 dark:ring-slate-400/30 shadow-sm'
-              : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 shadow-sm hover:border-slate-400 dark:hover:border-slate-700 hover:shadow-md'
-          }`}
+          className={`p-4 rounded-xl border text-left transition-all duration-150 cursor-pointer flex items-center justify-between ${statusFilter === 'INACTIVE'
+            ? 'bg-slate-100 dark:bg-slate-800 border-slate-500 dark:border-slate-400 ring-2 ring-slate-500/20 dark:ring-slate-400/30 shadow-sm'
+            : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 shadow-sm hover:border-slate-400 dark:hover:border-slate-700 hover:shadow-md'
+            }`}
           aria-pressed={statusFilter === 'INACTIVE'}
           aria-label="Filter inactive students"
         >
@@ -539,6 +547,11 @@ export default function StudentList() {
                   Section {sec}
                 </option>
               ))}
+              {unassignedStudents > 0 && (
+                <option value="UNASSIGNED">
+                  Unassigned ({unassignedStudents})
+                </option>
+              )}
             </select>
 
             {/* 4. Search Students */}
@@ -576,108 +589,118 @@ export default function StudentList() {
                 <th className="px-6 py-4 font-semibold text-right bg-slate-50 dark:bg-slate-800">Actions</th>
               </tr>
             </thead>
-          <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
-            {sortedFiltered.map((s) => (
-              <tr
-                key={s._id}
-                onClick={() => navigate(`/admin/students/${s._id}`)}
-                className="hover:bg-indigo-50/40 dark:hover:bg-slate-800/60 cursor-pointer transition-colors group"
-                title="Click to view student profile"
-              >
-                {/* 1. Student ID */}
-                <td className="px-6 py-4 font-mono font-medium text-slate-900 dark:text-slate-100 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
-                  <Link
-                    to={`/admin/students/${s._id}`}
-                    onClick={(e) => e.stopPropagation()}
-                    className="hover:underline"
-                  >
-                    {s.studentId}
-                  </Link>
-                </td>
-
-                {/* 2. Name */}
-                <td className="px-6 py-4 font-medium text-slate-800 dark:text-slate-200">
-                  <Link
-                    to={`/admin/students/${s._id}`}
-                    onClick={(e) => e.stopPropagation()}
-                    className="hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
-                  >
-                    {s.user?.name || s.personalInfo?.name || 'Name not available'}
-                  </Link>
-                </td>
-
-                {/* 3. Year (Moved to 3rd position, immediately after Name) */}
-                <td className="px-6 py-4 text-slate-700 dark:text-slate-300 font-medium">
-                  {resolveStudentYear(s)}
-                </td>
-
-                {/* 4. Department */}
-                <td className="px-6 py-4 text-slate-600 dark:text-slate-400">
-                  {resolveStudentDept(s)}
-                </td>
-
-                {/* 5. Section */}
-                <td className="px-6 py-4 text-slate-700 dark:text-slate-300 font-medium">
-                  {resolveSectionName(s)}
-                </td>
-
-                {/* 6. Status */}
-                <td className="px-6 py-4">
-                  <span className={`inline-flex px-2.5 py-1 rounded-full text-xs font-medium ${s.user?.isActive ? 'bg-green-100 dark:bg-green-950/60 text-green-700 dark:text-green-300' : 'bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300'}`}>
-                    {s.user?.isActive ? 'Active' : 'Inactive'}
-                  </span>
-                </td>
-                <td
-                  className="px-6 py-4 text-right flex justify-end gap-3"
-                  onClick={(e) => e.stopPropagation()}
+            <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
+              {sortedFiltered.map((s) => (
+                <tr
+                  key={s._id}
+                  onClick={() => navigate(`/admin/students/${s._id}`)}
+                  className="hover:bg-indigo-50/40 dark:hover:bg-slate-800/60 cursor-pointer transition-colors group"
+                  title="Click to view student profile"
                 >
-                  <button
-                    onClick={() => toggleStatus(s)}
-                    className="text-sm text-indigo-600 dark:text-indigo-400 hover:text-indigo-900 dark:hover:text-indigo-300 font-medium cursor-pointer"
-                  >
-                    {s.user?.isActive ? 'Deactivate' : 'Activate'}
-                  </button>
-                  <button
-                    onClick={() => resetPassword(s)}
-                    className="text-sm text-amber-600 dark:text-amber-400 hover:text-amber-900 dark:hover:text-amber-300 font-medium flex items-center gap-1 cursor-pointer"
-                  >
-                    <ShieldAlert className="w-4 h-4" /> Reset Pwd
-                  </button>
-                  <button
-                    onClick={() => openDeleteModal(s)}
-                    className="text-sm text-rose-600 dark:text-rose-400 hover:text-rose-900 dark:hover:text-rose-300 font-medium flex items-center gap-1 cursor-pointer"
-                    title="Permanently Delete Student"
-                  >
-                    <Trash2 className="w-4 h-4" /> Delete
-                  </button>
-                </td>
-              </tr>
-            ))}
-            {sortedFiltered.length === 0 && (
-              <tr>
-                <td colSpan="7" className="px-6 py-12 text-center text-slate-500 dark:text-slate-400">
-                  <p className="text-base font-medium">No students found matching the selected filters.</p>
-                  {(statusFilter !== 'ALL' || filterYear || filterDepartment || filterSection || searchTerm) && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setStatusFilter('ALL');
-                        setFilterYear('');
-                        setFilterDepartment('');
-                        setFilterSection('');
-                        setSearchTerm('');
-                      }}
-                      className="mt-2 inline-flex items-center text-sm text-indigo-600 dark:text-indigo-400 hover:underline font-medium cursor-pointer"
+                  {/* 1. Student ID */}
+                  <td className="px-6 py-4 font-mono font-medium text-slate-900 dark:text-slate-100 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
+                    <Link
+                      to={`/admin/students/${s._id}`}
+                      onClick={(e) => e.stopPropagation()}
+                      className="hover:underline"
                     >
-                      Reset all filters
+                      {s.studentId}
+                    </Link>
+                  </td>
+
+                  {/* 2. Name */}
+                  <td className="px-6 py-4 font-medium text-slate-800 dark:text-slate-200">
+                    <Link
+                      to={`/admin/students/${s._id}`}
+                      onClick={(e) => e.stopPropagation()}
+                      className="hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
+                    >
+                      {s.user?.name || s.personalInfo?.name || 'Name not available'}
+                    </Link>
+                  </td>
+
+                  {/* 3. Year (Moved to 3rd position, immediately after Name) */}
+                  <td className="px-6 py-4 text-slate-700 dark:text-slate-300 font-medium">
+                    {resolveStudentYear(s)}
+                  </td>
+
+                  {/* 4. Department */}
+                  <td className="px-6 py-4 text-slate-600 dark:text-slate-400">
+                    {resolveStudentDept(s)}
+                  </td>
+
+                  {/* 5. Section */}
+                  <td className="px-6 py-4 text-slate-700 dark:text-slate-300 font-medium">
+                    {isStudentEnrolled(s, configuredClasses) ? (
+                      <span>Section {resolveSectionName(s, configuredClasses)}</span>
+                    ) : (
+                      <span
+                        className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800/60"
+                        title="Student has no valid section assignment in configured classes"
+                      >
+                        <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+                        Unassigned
+                      </span>
+                    )}
+                  </td>
+
+                  {/* 6. Status */}
+                  <td className="px-6 py-4">
+                    <span className={`inline-flex px-2.5 py-1 rounded-full text-xs font-medium ${s.user?.isActive ? 'bg-green-100 dark:bg-green-950/60 text-green-700 dark:text-green-300' : 'bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300'}`}>
+                      {s.user?.isActive ? 'Active' : 'Inactive'}
+                    </span>
+                  </td>
+                  <td
+                    className="px-6 py-4 text-right flex justify-end gap-3"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <button
+                      onClick={() => toggleStatus(s)}
+                      className="text-sm text-indigo-600 dark:text-indigo-400 hover:text-indigo-900 dark:hover:text-indigo-300 font-medium cursor-pointer"
+                    >
+                      {s.user?.isActive ? 'Deactivate' : 'Activate'}
                     </button>
-                  )}
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+                    <button
+                      onClick={() => resetPassword(s)}
+                      className="text-sm text-amber-600 dark:text-amber-400 hover:text-amber-900 dark:hover:text-amber-300 font-medium flex items-center gap-1 cursor-pointer"
+                    >
+                      <ShieldAlert className="w-4 h-4" /> Reset Pwd
+                    </button>
+                    <button
+                      onClick={() => openDeleteModal(s)}
+                      className="text-sm text-rose-600 dark:text-rose-400 hover:text-rose-900 dark:hover:text-rose-300 font-medium flex items-center gap-1 cursor-pointer"
+                      title="Permanently Delete Student"
+                    >
+                      <Trash2 className="w-4 h-4" /> Delete
+                    </button>
+                  </td>
+                </tr>
+              ))}
+              {sortedFiltered.length === 0 && (
+                <tr>
+                  <td colSpan="7" className="px-6 py-12 text-center text-slate-500 dark:text-slate-400">
+                    <p className="text-base font-medium">No students found matching the selected filters.</p>
+                    {(statusFilter !== 'ALL' || filterYear || filterDepartment || filterSection || searchTerm) && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setStatusFilter('ALL');
+                          setFilterYear('');
+                          setFilterDepartment('');
+                          setFilterSection('');
+                          setSearchTerm('');
+                        }}
+                        className="mt-2 inline-flex items-center text-sm text-indigo-600 dark:text-indigo-400 hover:underline font-medium cursor-pointer"
+                      >
+                        Reset all filters
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {showModal && (
@@ -687,7 +710,7 @@ export default function StudentList() {
               <h2 className="text-xl font-bold text-slate-900 dark:text-slate-100">Edit Student</h2>
               <button onClick={handleCloseModal} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors cursor-pointer"><X className="w-5 h-5" /></button>
             </div>
-            
+
             <form onSubmit={handleSave} className="p-6">
               {formError && (
                 <div className="mb-6 p-3 bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 rounded-lg text-sm border border-rose-200 dark:border-rose-900/50">
@@ -716,11 +739,11 @@ export default function StudentList() {
                     <div>
                       <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Course</label>
                       <select value={courseSelect} onChange={(e) => {
-                          const val = e.target.value;
-                          setCourseSelect(val);
-                          if (val !== 'Other') setFormData(prev => ({...prev, course: val}));
-                          else setFormData(prev => ({...prev, course: ''}));
-                        }} required className="w-full px-3 py-2 border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 rounded-lg focus:ring-2 focus:ring-indigo-500">
+                        const val = e.target.value;
+                        setCourseSelect(val);
+                        if (val !== 'Other') setFormData(prev => ({ ...prev, course: val }));
+                        else setFormData(prev => ({ ...prev, course: '' }));
+                      }} required className="w-full px-3 py-2 border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 rounded-lg focus:ring-2 focus:ring-indigo-500">
                         <option value="">Select Course</option>
                         {coursesList.map(c => <option key={c} value={c}>{c}</option>)}
                         <option value="Other">Other</option>
@@ -803,11 +826,11 @@ export default function StudentList() {
                     <div>
                       <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Semester</label>
                       <select value={semesterSelect} onChange={(e) => {
-                          const val = e.target.value;
-                          setSemesterSelect(val);
-                          if (val !== 'Other') setFormData(prev => ({...prev, semester: val}));
-                          else setFormData(prev => ({...prev, semester: ''}));
-                        }} required className="w-full px-3 py-2 border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 rounded-lg focus:ring-2 focus:ring-indigo-500">
+                        const val = e.target.value;
+                        setSemesterSelect(val);
+                        if (val !== 'Other') setFormData(prev => ({ ...prev, semester: val }));
+                        else setFormData(prev => ({ ...prev, semester: '' }));
+                      }} required className="w-full px-3 py-2 border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 rounded-lg focus:ring-2 focus:ring-indigo-500">
                         <option value="">Select Semester</option>
                         {semestersList.map(s => <option key={s} value={s}>{s}</option>)}
                         <option value="Other">Other</option>
