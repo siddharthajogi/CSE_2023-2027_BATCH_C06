@@ -517,6 +517,9 @@ export default function TeacherProfilePage({ currentUser, onPasswordChanged, onL
         setIsEditing(false);
         setSuccessMessage('Faculty profile updated successfully.');
         setTimeout(() => setSuccessMessage(''), 4000);
+        try {
+          window.dispatchEvent(new CustomEvent('teacher-profile-updated', { detail: res.profile }));
+        } catch (_) {}
       } else {
         setError(res?.error || 'Failed to update teacher profile');
         if (res?.errors) {

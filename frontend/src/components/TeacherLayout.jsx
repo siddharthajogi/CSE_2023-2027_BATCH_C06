@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { NavLink, Outlet, useNavigate, useLocation, Link } from 'react-router-dom';
 import {
   LayoutDashboard,
@@ -13,7 +13,7 @@ import {
   CalendarCheck,
   FileEdit,
   TrendingUp,
-  CircleUserRound,
+  User,
   Power,
   Sun,
   Moon,
@@ -26,6 +26,16 @@ import {
 import ClassPulseLogo from './ClassPulseLogo';
 import { useTheme } from '../context/ThemeContext';
 import HeaderRefreshButton from './HeaderRefreshButton';
+import { teacherApi } from '../api';
+
+// Helper to generate initials from full name or teacher ID
+const getInitials = (name, fallbackId = 'TC') => {
+  if (!name || typeof name !== 'string') return (fallbackId || 'TC').slice(0, 2).toUpperCase();
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return (fallbackId || 'TC').slice(0, 2).toUpperCase();
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+};
 
 const getTeacherPageName = (pathname) => {
   const cleanPath = pathname.replace(/\/+$/, '');
@@ -62,6 +72,115 @@ export default function TeacherLayout({ onLogout, currentUser }) {
 
   // Mobile sidebar drawer state
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  // Authenticated Teacher Profile State for Header Avatar
+  const [teacherProfile, setTeacherProfile] = useState({
+    name: currentUser?.name || '',
+    profilePhoto: currentUser?.profilePhoto || '',
+    teacherId: currentUser?.userId || currentUser?.teacherId || ''
+  });
+
+  const syncTeacherProfile = useCallback(async () => {
+    try {
+      const res = await teacherApi.getTeacherProfile();
+      if (res && res.success && res.profile) {
+        setTeacherProfile({
+          name: res.profile.name || currentUser?.name || 'Faculty',
+          profilePhoto: res.profile.profilePhoto || '',
+          teacherId: res.profile.teacherId || res.profile.userId || currentUser?.userId || ''
+        });
+      }
+    } catch (err) {
+      console.warn('Failed to fetch teacher profile in header:', err);
+    }
+  }, [currentUser]);
+
+  // Synchronize on mount, custom event, storage update, and focus
+  useEffect(() => {
+    syncTeacherProfile();
+    const handleProfileUpdate = (e) => {
+      if (e?.detail) {
+        setTeacherProfile(prev => ({
+          ...prev,
+          name: e.detail.name || prev.name || 'Faculty',
+          profilePhoto: e.detail.profilePhoto !== undefined ? e.detail.profilePhoto : prev.profilePhoto,
+          teacherId: e.detail.teacherId || e.detail.userId || prev.teacherId
+        }));
+      } else {
+        syncTeacherProfile();
+      }
+    };
+
+    window.addEventListener('teacher-profile-updated', handleProfileUpdate);
+    window.addEventListener('storage', handleProfileUpdate);
+    window.addEventListener('focus', syncTeacherProfile);
+
+    return () => {
+      window.removeEventListener('teacher-profile-updated', handleProfileUpdate);
+      window.removeEventListener('storage', handleProfileUpdate);
+      window.removeEventListener('focus', syncTeacherProfile);
+    };
+  }, [syncTeacherProfile]);
+
+  // Ensure header avatar stays updated on navigation
+  useEffect(() => {
+    syncTeacherProfile();
+  }, [location.pathname, syncTeacherProfile]);
+
+  // Track previously visited teacher page (non-profile) for avatar toggle navigation
+  const previousTeacherPathRef = useRef(null);
+
+  useEffect(() => {
+    if (location.pathname && location.pathname !== '/teacher/profile') {
+      const fullPath = location.pathname + location.search;
+      previousTeacherPathRef.current = fullPath;
+      try {
+        sessionStorage.setItem('teacher_previous_page', fullPath);
+      } catch {
+        // Quiet fail if storage is restricted
+      }
+    }
+  }, [location.pathname, location.search]);
+
+  const handleAvatarClick = (e) => {
+    e.preventDefault();
+
+    if (location.pathname === '/teacher/profile') {
+      // Second click: Return to the previous page
+      if (location.state?.fromAvatarToggle && window.history.length > 1) {
+        navigate(-1);
+      } else {
+        let storedSessionPath = null;
+        try {
+          storedSessionPath = sessionStorage.getItem('teacher_previous_page');
+        } catch {
+          // Ignore storage restrictions
+        }
+
+        const storedReturn =
+          location.state?.returnTo ||
+          previousTeacherPathRef.current ||
+          storedSessionPath ||
+          '/teacher/dashboard';
+
+        const safeReturn =
+          (storedReturn && storedReturn !== '/teacher/profile')
+            ? storedReturn
+            : '/teacher/dashboard';
+
+        navigate(safeReturn);
+      }
+    } else {
+      // First click: Open My Profile, preserving current route
+      const currentFull = location.pathname + location.search;
+      navigate('/teacher/profile', {
+        state: {
+          returnTo: currentFull,
+          fromAvatarToggle: true
+        }
+      });
+    }
+  };
 
   // Theme Dropdown State
   const [isThemeOpen, setIsThemeOpen] = useState(false);
@@ -104,7 +223,7 @@ export default function TeacherLayout({ onLogout, currentUser }) {
     };
   }, [isThemeOpen]);
 
-  // Exact 13 items in the required order:
+  // Exact 12 items in the required order (My Profile moved to header avatar):
   // 1. Home
   // 2. My Subjects
   // 3. My Classes
@@ -117,7 +236,6 @@ export default function TeacherLayout({ onLogout, currentUser }) {
   // 10. Attendance
   // 11. Assignments
   // 12. Learning Improvement
-  // 13. My Profile
   const menuItems = [
     { name: 'Home', icon: LayoutDashboard, path: '/teacher/dashboard' },
     { name: 'My Subjects', icon: BookMarked, path: '/teacher/subjects' },
@@ -130,8 +248,7 @@ export default function TeacherLayout({ onLogout, currentUser }) {
     { name: 'Academic Records', icon: FileSpreadsheet, path: '/teacher/academic-records' },
     { name: 'Attendance', icon: CalendarCheck, path: '/teacher/attendance' },
     { name: 'Assignments', icon: FileEdit, path: '/teacher/assignments' },
-    { name: 'Learning Improvement', icon: TrendingUp, path: '/teacher/learning-improvement' },
-    { name: 'My Profile', icon: CircleUserRound, path: '/teacher/profile' }
+    { name: 'Learning Improvement', icon: TrendingUp, path: '/teacher/learning-improvement' }
   ];
 
   const renderNavLinks = (closeMobile = false) => (
@@ -183,7 +300,7 @@ export default function TeacherLayout({ onLogout, currentUser }) {
           </span>
         </div>
 
-        {/* 13 Navigation Links in Specified Order */}
+        {/* 12 Navigation Links in Specified Order */}
         {renderNavLinks(false)}
 
         {/* Bottom of Sidebar: Logout */}
@@ -367,6 +484,33 @@ export default function TeacherLayout({ onLogout, currentUser }) {
                 </div>
               )}
             </div>
+
+            {/* Teacher Profile Avatar at extreme right */}
+            <Link
+              to="/teacher/profile"
+              onClick={handleAvatarClick}
+              className={`relative inline-flex items-center justify-center rounded-full transition-all hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-emerald-500 cursor-pointer ${location.pathname === '/teacher/profile'
+                ? 'ring-2 ring-emerald-500 ring-offset-2 ring-offset-white dark:ring-offset-slate-900'
+                : ''
+                }`}
+              title={location.pathname === '/teacher/profile'
+                ? 'Return to previous page'
+                : (teacherProfile.name ? `${teacherProfile.name} (My Profile)` : 'Teacher Profile')
+              }
+              aria-label={location.pathname === '/teacher/profile' ? 'Return to previous page' : 'View Teacher Profile'}
+            >
+              {teacherProfile.profilePhoto ? (
+                <img
+                  src={teacherProfile.profilePhoto}
+                  alt={teacherProfile.name || 'Teacher Profile'}
+                  className="w-9 h-9 sm:w-10 sm:h-10 rounded-full object-cover border-2 border-emerald-200 dark:border-emerald-800 shadow-xs"
+                />
+              ) : (
+                <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-gradient-to-tr from-emerald-600 to-emerald-700 text-white flex items-center justify-center font-bold text-xs sm:text-sm border-2 border-emerald-200/60 dark:border-emerald-800/60 shadow-xs select-none">
+                  {getInitials(teacherProfile.name, teacherProfile.teacherId) || <User className="w-5 h-5 text-white/90" />}
+                </div>
+              )}
+            </Link>
 
             {/* Mobile Quick Logout */}
             <button
