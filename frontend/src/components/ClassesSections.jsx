@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { adminApi } from '../api';
 import { usePageRefresh } from '../context/RefreshContext';
@@ -115,6 +115,7 @@ export default function ClassesSections() {
   const [savingAssignments, setSavingAssignments] = useState(false);
   const [modalError, setModalError] = useState('');
   const [modalSuccess, setModalSuccess] = useState('');
+  const initialAssignmentRowsRef = useRef('[]');
 
   // Modal State: View Section Students (Task 6)
   const [viewingSectionStudents, setViewingSectionStudents] = useState(null);
@@ -917,14 +918,17 @@ export default function ClassesSections() {
           teacherId: a.teacher?._id || a.teacher || ''
         }));
         setAssignmentRows(currentRows);
+        initialAssignmentRowsRef.current = JSON.stringify(currentRows);
       } else {
         setSelectedGroup(group);
         setAssignmentRows([]);
+        initialAssignmentRowsRef.current = '[]';
       }
     } catch (err) {
       console.error('Failed to load group details:', err);
       setSelectedGroup(group);
       setAssignmentRows([]);
+      initialAssignmentRowsRef.current = '[]';
     } finally {
       setGroupLoading(false);
     }
@@ -932,6 +936,11 @@ export default function ClassesSections() {
 
   const closeGroupModal = () => {
     if (savingAssignments) return;
+    const hasUnsavedChanges = JSON.stringify(assignmentRows) !== initialAssignmentRowsRef.current;
+    if (hasUnsavedChanges) {
+      const confirmDiscard = window.confirm('You have unsaved changes in subject assignments. Are you sure you want to discard them?');
+      if (!confirmDiscard) return;
+    }
     setSelectedGroup(null);
     setAssignmentRows([]);
     setModalError('');
@@ -978,6 +987,7 @@ export default function ClassesSections() {
     try {
       const res = await adminApi.updateClassAssignments(selectedGroup._id, assignmentRows);
       if (res.success) {
+        initialAssignmentRowsRef.current = JSON.stringify(assignmentRows);
         setModalSuccess(res.message || 'Section assignments updated successfully!');
         setActionSuccess(`Assignments updated for Section ${selectedGroup.section} (${selectedGroup.department})`);
         
@@ -1003,6 +1013,65 @@ export default function ClassesSections() {
       setSavingAssignments(false);
     }
   };
+
+  // Eligible subjects for Manage Assignments modal based on section department & academic year
+  const eligibleSubjectsForGroup = useMemo(() => {
+    if (!selectedGroup) return activeSubjects;
+    const groupDept = (selectedGroup.department || '').toLowerCase().trim();
+    const groupDeptCode = getDeptInfo(selectedGroup.department).code.toLowerCase().trim();
+    const groupYearOfStudy = (selectedGroup.yearOfStudy || '').toLowerCase().trim();
+    const groupAy = (selectedGroup.academicYear || '').toLowerCase().trim();
+
+    const deptMatched = activeSubjects.filter(sub => {
+      const subDept = (sub.departmentRef?.name || (typeof sub.department === 'string' ? sub.department : sub.department?.name) || '').toLowerCase().trim();
+      const isDeptMatch = subDept === groupDept || subDept === groupDeptCode || (groupDept.includes(subDept) && subDept.length > 2) || (subDept.includes(groupDept) && groupDept.length > 2);
+      
+      if (sub.academicYear) {
+        const subAy = sub.academicYear.toLowerCase().trim();
+        const isAyMatch = subAy === groupYearOfStudy || subAy === groupAy;
+        return isDeptMatch && (isAyMatch || !groupYearOfStudy);
+      }
+      return isDeptMatch;
+    });
+
+    if (deptMatched.length > 0) {
+      const assignedIds = new Set(assignmentRows.map(r => r.subjectId).filter(Boolean));
+      const result = [...deptMatched];
+      activeSubjects.forEach(s => {
+        if (assignedIds.has(s._id) && !result.some(r => r._id === s._id)) {
+          result.push(s);
+        }
+      });
+      return result;
+    }
+
+    return activeSubjects;
+  }, [selectedGroup, activeSubjects, assignmentRows]);
+
+  // Eligible teachers for Manage Assignments modal based on section department
+  const eligibleTeachersForGroup = useMemo(() => {
+    if (!selectedGroup) return activeTeachers;
+    const groupDept = (selectedGroup.department || '').toLowerCase().trim();
+    const groupDeptCode = getDeptInfo(selectedGroup.department).code.toLowerCase().trim();
+
+    const deptMatched = activeTeachers.filter(tch => {
+      const tDept = (tch.departmentRef?.name || (typeof tch.department === 'string' ? tch.department : tch.department?.name) || '').toLowerCase().trim();
+      return tDept === groupDept || tDept === groupDeptCode || (groupDept.includes(tDept) && tDept.length > 2) || (tDept.includes(groupDept) && groupDept.length > 2);
+    });
+
+    if (deptMatched.length > 0) {
+      const assignedIds = new Set(assignmentRows.map(r => r.teacherId).filter(Boolean));
+      const result = [...deptMatched];
+      activeTeachers.forEach(t => {
+        if (assignedIds.has(t._id) && !result.some(r => r._id === t._id)) {
+          result.push(t);
+        }
+      });
+      return result;
+    }
+
+    return activeTeachers;
+  }, [selectedGroup, activeTeachers, assignmentRows]);
 
   // --- Task 4: Add Department Handler ---
   const handleOpenAddDepartment = (yearOfStudy) => {
@@ -3620,33 +3689,30 @@ export default function ClassesSections() {
       {/* ============================================================== */}
       {selectedGroup && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150">
-          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-800 w-full max-w-3xl max-h-[90vh] flex flex-col overflow-hidden transition-colors">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-800 w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden transition-colors">
             {/* Modal Header */}
-            <div className="p-6 border-b border-slate-200 dark:border-slate-800 flex items-start justify-between gap-4">
+            <div className="p-5 sm:p-6 border-b border-slate-200 dark:border-slate-800 flex items-start justify-between gap-4">
               <div>
-                <div className="flex items-center gap-2 mb-1 flex-wrap">
-                  <span className="text-xs font-bold px-2 py-0.5 rounded bg-indigo-100 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-400">
-                    {selectedGroup.course}
+                <h2 className="text-xl sm:text-2xl font-extrabold text-slate-900 dark:text-slate-100 tracking-tight">
+                  Manage Assignments — Section {selectedGroup.section}
+                </h2>
+                <div className="flex items-center flex-wrap gap-x-3 gap-y-1 mt-1.5 text-xs text-slate-500 dark:text-slate-400">
+                  <span>
+                    Department: <strong className="font-semibold text-slate-700 dark:text-slate-300">{selectedGroup.department}</strong>
                   </span>
-                  <span className="text-xs font-semibold px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
-                    Sem {selectedGroup.semester}
+                  <span className="text-slate-300 dark:text-slate-700">•</span>
+                  <span>
+                    Academic Year: <strong className="font-semibold text-slate-700 dark:text-slate-300">{selectedGroup.academicYear}</strong>
                   </span>
-                  <span className="text-xs font-bold px-2.5 py-0.5 rounded bg-indigo-600 text-white">
-                    Section {selectedGroup.section}
-                  </span>
-                  <span className="text-xs text-slate-500 dark:text-slate-400">
-                    ({selectedGroup.academicYear})
+                  <span className="text-slate-300 dark:text-slate-700">•</span>
+                  <span>
+                    Semester: <strong className="font-semibold text-slate-700 dark:text-slate-300">Sem {selectedGroup.semester}</strong>
                   </span>
                 </div>
-                <h2 className="text-xl font-bold text-slate-900 dark:text-slate-100">
-                  {selectedGroup.department}
-                </h2>
-                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                  Section ID: <span className="font-mono text-slate-700 dark:text-slate-300">{selectedGroup._id}</span>
-                </p>
               </div>
 
               <button
+                type="button"
                 onClick={closeGroupModal}
                 disabled={savingAssignments}
                 className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-lg transition-colors cursor-pointer"
@@ -3657,75 +3723,73 @@ export default function ClassesSections() {
             </div>
 
             {/* Modal Navigation Tabs */}
-            <div className="px-6 border-b border-slate-200 dark:border-slate-800 flex gap-4 text-sm font-medium">
+            <div className="px-5 sm:px-6 border-b border-slate-200 dark:border-slate-800 flex gap-4 text-xs sm:text-sm font-semibold bg-slate-50/50 dark:bg-slate-800/20 shrink-0">
               <button
+                type="button"
                 onClick={() => setGroupModalTab('assignments')}
-                className={`py-3 border-b-2 transition-colors cursor-pointer flex items-center gap-2 ${
+                className={`py-3 px-1 border-b-2 transition-colors cursor-pointer flex items-center gap-2 ${
                   groupModalTab === 'assignments'
-                    ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400 font-semibold'
+                    ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400 font-bold'
                     : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
                 }`}
               >
-                <BookOpen className="w-4 h-4" />
+                <BookOpen className="w-4 h-4 text-indigo-500" />
                 <span>Curriculum Mapping</span>
-                <span className="text-xs px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
+                <span className="text-xs px-2 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 font-bold">
                   {assignmentRows.length}
                 </span>
               </button>
 
               <button
+                type="button"
                 onClick={() => setGroupModalTab('students')}
-                className={`py-3 border-b-2 transition-colors cursor-pointer flex items-center gap-2 ${
+                className={`py-3 px-1 border-b-2 transition-colors cursor-pointer flex items-center gap-2 ${
                   groupModalTab === 'students'
-                    ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400 font-semibold'
+                    ? 'border-purple-600 text-purple-600 dark:text-purple-400 font-bold'
                     : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
                 }`}
               >
-                <Users className="w-4 h-4" />
+                <Users className="w-4 h-4 text-purple-500" />
                 <span>Enrolled Students</span>
-                <span className="text-xs px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
+                <span className="text-xs px-2 py-0.5 rounded-full bg-purple-100 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 font-bold">
                   {selectedGroup.students?.length || selectedGroup.studentCount || 0}
                 </span>
               </button>
             </div>
 
             {/* Modal Body */}
-            <div className="p-6 overflow-y-auto flex-1">
+            <div className="p-5 sm:p-6 overflow-y-auto flex-1 space-y-4">
               {modalError && (
-                <div className="mb-4 p-3 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/50 text-rose-700 dark:text-rose-400 rounded-lg text-sm flex items-center gap-2">
-                  <AlertCircle className="w-4 h-4 shrink-0" />
+                <div className="p-3 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/50 text-rose-700 dark:text-rose-400 rounded-xl text-xs sm:text-sm flex items-center gap-2 font-medium">
+                  <AlertCircle className="w-4 h-4 shrink-0 text-rose-600 dark:text-rose-400" />
                   <span>{modalError}</span>
                 </div>
               )}
 
               {modalSuccess && (
-                <div className="mb-4 p-3 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-900/50 text-emerald-700 dark:text-emerald-300 rounded-lg text-sm flex items-center gap-2">
-                  <CheckCircle2 className="w-4 h-4 shrink-0" />
+                <div className="p-3 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-900/50 text-emerald-700 dark:text-emerald-300 rounded-xl text-xs sm:text-sm flex items-center gap-2 font-medium">
+                  <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
                   <span>{modalSuccess}</span>
                 </div>
               )}
 
               {groupLoading ? (
-                <div className="flex flex-col items-center justify-center py-12">
+                <div className="flex flex-col items-center justify-center py-16">
                   <Loader2 className="w-8 h-8 animate-spin text-indigo-600 mb-2" />
-                  <p className="text-xs text-slate-500 dark:text-slate-400">Loading section details...</p>
+                  <p className="text-xs font-medium text-slate-500 dark:text-slate-400">Loading section assignments and roster...</p>
                 </div>
               ) : groupModalTab === 'assignments' ? (
                 <div>
-                  <div className="mb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-                    <div>
-                      <h4 className="text-sm font-bold text-slate-900 dark:text-slate-100">
-                        Subject & Teacher Assignments for Section {selectedGroup.section}
-                      </h4>
-                      <p className="text-xs text-slate-500 dark:text-slate-400">
-                        Assign subjects from the catalog to faculty teachers. All students in Section {selectedGroup.section} inherit these assignments instantly.
-                      </p>
-                    </div>
+                  {/* Heading & Add Assignment Button */}
+                  <div className="mb-4 flex items-center justify-between gap-3">
+                    <h3 className="text-sm sm:text-base font-bold text-slate-900 dark:text-slate-100">
+                      Subject & Teacher Assignments
+                    </h3>
 
                     <button
                       type="button"
                       onClick={handleAddAssignmentRow}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-900/50 rounded-lg text-xs font-semibold transition-colors cursor-pointer shrink-0"
+                      className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold shadow-2xs transition-colors cursor-pointer shrink-0"
                     >
                       <Plus className="w-3.5 h-3.5" />
                       <span>Add Subject Assignment</span>
@@ -3733,109 +3797,94 @@ export default function ClassesSections() {
                   </div>
 
                   {assignmentRows.length === 0 ? (
-                    <div className="p-8 text-center border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-xl my-4">
-                      <Clock className="w-8 h-8 text-amber-500 mx-auto mb-2" />
-                      <h5 className="text-sm font-bold text-slate-800 dark:text-slate-200">
-                        Assignments Pending
-                      </h5>
-                      <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm mx-auto mt-1 mb-3">
-                        This section currently has no subjects or teachers assigned. Click below to add the curriculum for this section.
+                    <div className="p-8 text-center border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-xl my-3 bg-slate-50/40 dark:bg-slate-900/40">
+                      <BookOpen className="w-8 h-8 text-slate-300 dark:text-slate-700 mx-auto mb-2" />
+                      <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                        No Assignments Added
+                      </h4>
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400 max-w-sm mx-auto mt-1 mb-3">
+                        No subjects or teachers have been assigned to Section {selectedGroup.section} yet. Click below to add an assignment.
                       </p>
                       <button
                         type="button"
                         onClick={handleAddAssignmentRow}
-                        className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold shadow-xs transition-colors cursor-pointer"
+                        className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold shadow-2xs transition-colors cursor-pointer"
                       >
                         <Plus className="w-3.5 h-3.5" />
-                        <span>Assign First Subject</span>
+                        <span>Add Subject Assignment</span>
                       </button>
                     </div>
                   ) : (
-                    <div className="space-y-3">
-                      <div className="hidden sm:grid sm:grid-cols-12 gap-3 px-3 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                        <div className="col-span-5">Subject</div>
-                        <div className="col-span-6">Assigned Teacher</div>
-                        <div className="col-span-1 text-center">Action</div>
-                      </div>
+                    <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800 shadow-2xs">
+                      <table className="w-full text-left text-xs whitespace-nowrap">
+                        <thead className="bg-slate-50 dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 border-b border-slate-200 dark:border-slate-800">
+                          <tr>
+                            <th className="px-4 py-3 font-semibold w-[48%]">Subject</th>
+                            <th className="px-4 py-3 font-semibold w-[42%]">Assigned Teacher</th>
+                            <th className="px-4 py-3 font-semibold w-[10%] text-center">Action</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-200 dark:divide-slate-800 bg-white dark:bg-slate-900">
+                          {assignmentRows.map((row, idx) => (
+                            <tr key={idx} className="hover:bg-slate-50/60 dark:hover:bg-slate-800/40 transition-colors">
+                              {/* Subject Dropdown */}
+                              <td className="px-4 py-2.5">
+                                <select
+                                  value={row.subjectId}
+                                  onChange={(e) => handleRowChange(idx, 'subjectId', e.target.value)}
+                                  className="w-full px-3 py-2 border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 rounded-xl text-xs focus:ring-2 focus:ring-indigo-500 shadow-2xs h-10 transition-colors cursor-pointer"
+                                >
+                                  <option value="">-- Select Subject --</option>
+                                  {eligibleSubjectsForGroup.map((sub) => (
+                                    <option key={sub._id} value={sub._id}>
+                                      {sub.code} — {sub.name}
+                                    </option>
+                                  ))}
+                                </select>
+                              </td>
 
-                      {assignmentRows.map((row, idx) => (
-                        <div
-                          key={idx}
-                          className="p-3 sm:p-2 bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800 rounded-xl grid grid-cols-1 sm:grid-cols-12 gap-2.5 items-center"
-                        >
-                          {/* Subject Selector */}
-                          <div className="sm:col-span-5">
-                            <label className="block sm:hidden text-xs font-medium text-slate-500 mb-1">
-                              Subject
-                            </label>
-                            <select
-                              value={row.subjectId}
-                              onChange={(e) => handleRowChange(idx, 'subjectId', e.target.value)}
-                              className="w-full px-3 py-2 border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 rounded-lg text-xs focus:ring-2 focus:ring-indigo-500"
-                            >
-                              <option value="">-- Select Subject --</option>
-                              {activeSubjects.map((sub) => {
-                                const subDept = sub.departmentRef?.name || (typeof sub.department === 'string' ? sub.department : sub.department?.name) || '';
-                                return (
-                                  <option key={sub._id} value={sub._id}>
-                                    {sub.code} - {sub.name} {subDept ? `(${subDept})` : ''}
-                                  </option>
-                                );
-                              })}
-                            </select>
-                          </div>
+                              {/* Teacher Dropdown */}
+                              <td className="px-4 py-2.5">
+                                <select
+                                  value={row.teacherId}
+                                  onChange={(e) => handleRowChange(idx, 'teacherId', e.target.value)}
+                                  className="w-full px-3 py-2 border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 rounded-xl text-xs focus:ring-2 focus:ring-indigo-500 shadow-2xs h-10 transition-colors cursor-pointer"
+                                >
+                                  <option value="">-- Select Teacher (Unassigned) --</option>
+                                  {eligibleTeachersForGroup.map((tch) => {
+                                    const tName = tch.user?.name || tch.personalInfo?.name || tch.name || tch.teacherId;
+                                    return (
+                                      <option key={tch._id} value={tch._id}>
+                                        {tName} — {tch.designation || 'Faculty'}
+                                      </option>
+                                    );
+                                  })}
+                                </select>
+                              </td>
 
-                          {/* Teacher Selector */}
-                          <div className="sm:col-span-6">
-                            <label className="block sm:hidden text-xs font-medium text-slate-500 mb-1">
-                              Assigned Teacher
-                            </label>
-                            <select
-                              value={row.teacherId}
-                              onChange={(e) => handleRowChange(idx, 'teacherId', e.target.value)}
-                              className="w-full px-3 py-2 border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 rounded-lg text-xs focus:ring-2 focus:ring-indigo-500"
-                            >
-                              <option value="">-- Select Teacher (Unassigned) --</option>
-                              {activeTeachers.map((tch) => {
-                                const tName = tch.user?.name || tch.personalInfo?.name || tch.teacherId;
-                                const tDept = tch.departmentRef?.name || (typeof tch.department === 'string' ? tch.department : tch.department?.name) || '';
-                                return (
-                                  <option key={tch._id} value={tch._id}>
-                                    {tName} ({tDept ? `${tDept} • ` : ''}{tch.designation || 'Teacher'})
-                                  </option>
-                                );
-                              })}
-                            </select>
-                          </div>
-
-                          {/* Remove button */}
-                          <div className="sm:col-span-1 flex justify-end sm:justify-center">
-                            <button
-                              type="button"
-                              onClick={() => handleRemoveAssignmentRow(idx)}
-                              className="p-1.5 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg transition-colors cursor-pointer"
-                              title="Remove assignment row"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </div>
-                        </div>
-                      ))}
+                              {/* Action: Delete Row */}
+                              <td className="px-4 py-2.5 text-center">
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveAssignmentRow(idx)}
+                                  className="p-2 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-xl transition-colors cursor-pointer hover:scale-105 active:scale-95 inline-flex items-center justify-center"
+                                  title="Remove assignment row"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
                     </div>
                   )}
                 </div>
               ) : (
-                /* Tab 2: Enrolled Students (Read-Only) */
+                /* Tab 2: Enrolled Students */
                 <div>
-                  <div className="p-3 bg-indigo-50/60 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-900/50 rounded-xl text-xs text-indigo-800 dark:text-indigo-300 flex items-start gap-2.5 mb-4">
-                    <UserCheck className="w-4 h-4 shrink-0 mt-0.5 text-indigo-600 dark:text-indigo-400" />
-                    <div>
-                      <span className="font-semibold">Automatic Grouping:</span> Students are placed in Section {selectedGroup.section} automatically upon account registration or academic updates matching Program ({selectedGroup.course}), Department ({selectedGroup.department}), Semester ({selectedGroup.semester}), Section ({selectedGroup.section}), and Year ({selectedGroup.academicYear}).
-                    </div>
-                  </div>
-
                   {selectedGroup.students && selectedGroup.students.length > 0 ? (
-                    <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800">
+                    <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800 shadow-2xs">
                       <table className="w-full text-left text-xs whitespace-nowrap">
                         <thead className="bg-slate-50 dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 border-b border-slate-200 dark:border-slate-800">
                           <tr>
@@ -3847,11 +3896,11 @@ export default function ClassesSections() {
                         </thead>
                         <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
                           {selectedGroup.students.map((stu) => (
-                            <tr key={stu._id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
+                            <tr key={stu._id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors">
                               <td className="px-4 py-2.5 font-mono font-medium text-slate-900 dark:text-slate-100">
                                 {stu.studentId}
                               </td>
-                              <td className="px-4 py-2.5 text-slate-800 dark:text-slate-200">
+                              <td className="px-4 py-2.5 font-semibold text-slate-800 dark:text-slate-200">
                                 {stu.user?.name || stu.personalInfo?.name || '—'}
                               </td>
                               <td className="px-4 py-2.5 text-slate-500 dark:text-slate-400">
@@ -3872,8 +3921,14 @@ export default function ClassesSections() {
                       </table>
                     </div>
                   ) : (
-                    <div className="p-8 text-center border border-dashed border-slate-200 dark:border-slate-800 rounded-xl text-xs text-slate-500 dark:text-slate-400">
-                      No students are currently enrolled in Section {selectedGroup.section}.
+                    <div className="p-8 text-center border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-xl text-xs text-slate-500 dark:text-slate-400 bg-slate-50/40 dark:bg-slate-900/40">
+                      <Users className="w-8 h-8 text-slate-300 dark:text-slate-700 mx-auto mb-2" />
+                      <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                        No Students Enrolled
+                      </h4>
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400 max-w-sm mx-auto mt-1">
+                        No students are currently enrolled in Section {selectedGroup.section}.
+                      </p>
                     </div>
                   )}
                 </div>
@@ -3881,44 +3936,36 @@ export default function ClassesSections() {
             </div>
 
             {/* Modal Footer */}
-            <div className="p-4 bg-slate-50 dark:bg-slate-800/50 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between">
-              <span className="text-xs text-slate-500 dark:text-slate-400">
-                {groupModalTab === 'assignments'
-                  ? `${assignmentRows.length} subject(s) in curriculum mapping`
-                  : `${selectedGroup.students?.length || 0} student(s) enrolled`}
-              </span>
+            <div className="p-4 bg-slate-50 dark:bg-slate-800/50 border-t border-slate-200 dark:border-slate-800 flex items-center justify-end gap-3">
+              <button
+                type="button"
+                onClick={closeGroupModal}
+                disabled={savingAssignments}
+                className="px-4 py-2 border border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-xl text-xs font-semibold transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
 
-              <div className="flex items-center gap-3">
+              {groupModalTab === 'assignments' && (
                 <button
                   type="button"
-                  onClick={closeGroupModal}
+                  onClick={handleSaveAssignments}
                   disabled={savingAssignments}
-                  className="px-4 py-2 border border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-lg text-xs font-semibold transition-colors cursor-pointer"
+                  className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold shadow-2xs transition-colors cursor-pointer disabled:opacity-50"
                 >
-                  Close
+                  {savingAssignments ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      <span>Saving Assignments...</span>
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      <span>Save Assignments</span>
+                    </>
+                  )}
                 </button>
-
-                {groupModalTab === 'assignments' && (
-                  <button
-                    type="button"
-                    onClick={handleSaveAssignments}
-                    disabled={savingAssignments}
-                    className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold shadow-xs transition-colors cursor-pointer disabled:opacity-50"
-                  >
-                    {savingAssignments ? (
-                      <>
-                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                        <span>Saving Assignments...</span>
-                      </>
-                    ) : (
-                      <>
-                        <CheckCircle2 className="w-3.5 h-3.5" />
-                        <span>Save Group Assignments</span>
-                      </>
-                    )}
-                  </button>
-                )}
-              </div>
+              )}
             </div>
           </div>
         </div>
