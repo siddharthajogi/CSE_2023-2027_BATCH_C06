@@ -2356,5 +2356,125 @@ exports.getTeacherRiskAnalytics = async (req, res) => {
   }
 };
 
+/**
+ * @route   GET /api/teacher/preferences
+ * @desc    Get authenticated teacher's preferences (notifications & teaching)
+ * @access  Private (Teacher only)
+ */
+exports.getTeacherPreferences = async (req, res) => {
+  try {
+    const user = await User.findById(req.currentUser._id).select('preferences');
+    const defaultPreferences = {
+      notifications: {
+        inApp: true,
+        studentUpdates: true,
+        academicRecords: true,
+        riskAlerts: true,
+        interventions: true,
+        assignmentsAttendance: true,
+        securityAlerts: true
+      },
+      teaching: {
+        defaultAcademicYear: 'all',
+        defaultClassId: 'all',
+        preferredNotificationView: 'all'
+      }
+    };
+
+    const userPrefs = user?.preferences || {};
+    const mergedNotifications = {
+      ...defaultPreferences.notifications,
+      ...(userPrefs.notifications || {})
+    };
+    const mergedTeaching = {
+      ...defaultPreferences.teaching,
+      ...(userPrefs.teaching || {})
+    };
+
+    return res.status(200).json({
+      success: true,
+      preferences: {
+        notifications: mergedNotifications,
+        teaching: mergedTeaching
+      }
+    });
+  } catch (error) {
+    console.error('getTeacherPreferences error:', error);
+    return res.status(500).json({ success: false, error: 'Failed to retrieve teacher preferences' });
+  }
+};
+
+/**
+ * @route   PUT /api/teacher/preferences
+ * @desc    Update authenticated teacher's preferences
+ * @access  Private (Teacher only)
+ */
+exports.updateTeacherPreferences = async (req, res) => {
+  try {
+    const user = await User.findById(req.currentUser._id);
+    if (!user) {
+      return res.status(404).json({ success: false, error: 'Teacher account not found' });
+    }
+
+    if (!user.preferences) {
+      user.preferences = {};
+    }
+    if (!user.preferences.notifications) {
+      user.preferences.notifications = {};
+    }
+    if (!user.preferences.teaching) {
+      user.preferences.teaching = {};
+    }
+
+    const { notifications, teaching } = req.body;
+
+    if (notifications && typeof notifications === 'object') {
+      const allowedNotificationKeys = [
+        'inApp',
+        'studentUpdates',
+        'accountActivity',
+        'academicRecords',
+        'riskAlerts',
+        'interventions',
+        'assignmentsAttendance',
+        'securityAlerts'
+      ];
+      allowedNotificationKeys.forEach(key => {
+        if (typeof notifications[key] === 'boolean') {
+          user.preferences.notifications[key] = notifications[key];
+        }
+      });
+      if (typeof notifications.studentUpdates === 'boolean') {
+        user.preferences.notifications.accountActivity = notifications.studentUpdates;
+      }
+    }
+
+    if (teaching && typeof teaching === 'object') {
+      if (typeof teaching.defaultAcademicYear === 'string') {
+        user.preferences.teaching.defaultAcademicYear = teaching.defaultAcademicYear.trim();
+      }
+      if (typeof teaching.defaultClassId === 'string') {
+        user.preferences.teaching.defaultClassId = teaching.defaultClassId.trim();
+      }
+      if (typeof teaching.preferredNotificationView === 'string') {
+        user.preferences.teaching.preferredNotificationView = teaching.preferredNotificationView.trim();
+      }
+    }
+
+    user.markModified('preferences');
+    await user.save();
+
+    return res.status(200).json({
+      success: true,
+      message: 'Preferences saved successfully.',
+      preferences: user.preferences
+    });
+  } catch (error) {
+    console.error('updateTeacherPreferences error:', error);
+    return res.status(500).json({ success: false, error: 'Failed to save teacher preferences' });
+  }
+};
+
+
 
 

@@ -60,6 +60,7 @@ import TeacherPlaceholder from './components/TeacherPlaceholder';
 import TeacherKnowledgeGaps from './components/TeacherKnowledgeGaps';
 import TeacherProfilePage from './components/TeacherProfilePage';
 import TeacherNotifications from './components/TeacherNotifications';
+import TeacherSettings from './components/TeacherSettings';
 import { authApi } from './api';
 import { useTheme } from './context/ThemeContext';
 
@@ -369,6 +370,10 @@ export default function App() {
               description="Track cohort progress trajectories, intervention effectiveness, and learning outcomes."
             />
           }
+        />
+        <Route
+          path="settings"
+          element={<TeacherSettings currentUser={currentUser} onLogout={handleLogout} />}
         />
         <Route
           path="profile"

@@ -187,6 +187,18 @@ router.get('/profile', teacherController.getTeacherProfile);
  */
 router.put('/profile', teacherController.updateTeacherProfile);
 
+/**
+ * @route   GET /api/teacher/preferences
+ * @desc    Get authenticated teacher's preferences (notifications & teaching)
+ */
+router.get('/preferences', teacherController.getTeacherPreferences);
+
+/**
+ * @route   PUT /api/teacher/preferences
+ * @desc    Update authenticated teacher's preferences
+ */
+router.put('/preferences', teacherController.updateTeacherPreferences);
+
 module.exports = router;
 
 

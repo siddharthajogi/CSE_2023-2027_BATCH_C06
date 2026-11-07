@@ -13,6 +13,7 @@ import {
   CalendarCheck,
   FileEdit,
   TrendingUp,
+  Settings,
   User,
   Power,
   Sun,
@@ -53,6 +54,7 @@ const getTeacherPageName = (pathname) => {
   if (cleanPath === '/teacher/attendance') return 'Attendance';
   if (cleanPath === '/teacher/assignments') return 'Assignments';
   if (cleanPath === '/teacher/learning-improvement') return 'Learning Improvement';
+  if (cleanPath === '/teacher/settings') return 'Settings';
   if (cleanPath === '/teacher/profile') return 'My Profile';
   if (cleanPath === '/teacher/notifications') return 'Notifications';
 
@@ -223,7 +225,7 @@ export default function TeacherLayout({ onLogout, currentUser }) {
     };
   }, [isThemeOpen]);
 
-  // Exact 12 items in the required order (My Profile moved to header avatar):
+  // Exact 13 items in the required order:
   // 1. Home
   // 2. My Subjects
   // 3. My Classes
@@ -236,6 +238,7 @@ export default function TeacherLayout({ onLogout, currentUser }) {
   // 10. Attendance
   // 11. Assignments
   // 12. Learning Improvement
+  // 13. Settings
   const menuItems = [
     { name: 'Home', icon: LayoutDashboard, path: '/teacher/dashboard' },
     { name: 'My Subjects', icon: BookMarked, path: '/teacher/subjects' },
@@ -248,7 +251,8 @@ export default function TeacherLayout({ onLogout, currentUser }) {
     { name: 'Academic Records', icon: FileSpreadsheet, path: '/teacher/academic-records' },
     { name: 'Attendance', icon: CalendarCheck, path: '/teacher/attendance' },
     { name: 'Assignments', icon: FileEdit, path: '/teacher/assignments' },
-    { name: 'Learning Improvement', icon: TrendingUp, path: '/teacher/learning-improvement' }
+    { name: 'Learning Improvement', icon: TrendingUp, path: '/teacher/learning-improvement' },
+    { name: 'Settings', icon: Settings, path: '/teacher/settings' }
   ];
 
   const renderNavLinks = (closeMobile = false) => (
@@ -300,7 +304,7 @@ export default function TeacherLayout({ onLogout, currentUser }) {
           </span>
         </div>
 
-        {/* 12 Navigation Links in Specified Order */}
+        {/* 13 Navigation Links in Specified Order */}
         {renderNavLinks(false)}
 
         {/* Bottom of Sidebar: Logout */}

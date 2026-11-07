@@ -90,7 +90,16 @@ const userSchema = new mongoose.Schema(
         inApp: { type: Boolean, default: true },
         academicRecords: { type: Boolean, default: true },
         accountActivity: { type: Boolean, default: true },
-        riskAlerts: { type: Boolean, default: true }
+        riskAlerts: { type: Boolean, default: true },
+        studentUpdates: { type: Boolean, default: true },
+        interventions: { type: Boolean, default: true },
+        assignmentsAttendance: { type: Boolean, default: true },
+        securityAlerts: { type: Boolean, default: true }
+      },
+      teaching: {
+        defaultAcademicYear: { type: String, default: 'all' },
+        defaultClassId: { type: String, default: 'all' },
+        preferredNotificationView: { type: String, default: 'all' }
       }
     }
   },
